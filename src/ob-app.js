@@ -1,0 +1,3957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Operation Bulletin — Cost Sheet Builder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+:root{
+  --navy:#0B2340;
+  --navy-2:#12335c;
+  --teal:#16A394;
+  --teal-dark:#0d7a6f;
+  --paper:#F6F3EC;
+  --paper-2:#EFEAE0;
+  --ink:#1B2430;
+  --ink-soft:#5b6472;
+  --amber:#E2A335;
+  --line:#DDD6C4;
+  --white:#FFFFFF;
+  --danger:#C1503F;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(11,35,64,0.06), 0 4px 14px rgba(11,35,64,0.06);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;}
+body{padding:0;}
+
+/* ===== shell + sidebar ===== */
+.shell{display:flex;min-height:100vh;}
+.sidebar{
+  width:242px;flex-shrink:0;background:linear-gradient(180deg,var(--navy) 0%, var(--navy-2) 100%);
+  color:rgba(255,255,255,.82);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:50;
+}
+.sidebar::-webkit-scrollbar{width:6px;}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px;}
+.side-brand{display:flex;align-items:center;gap:11px;padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.08);}
+.side-brand .brand-mark{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--teal),var(--teal-dark));display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 10px rgba(22,163,148,.35);}
+.side-brand .brand-mark svg{width:20px;height:20px;}
+.side-brand .brand-text h1{margin:0;font-family:'Space Grotesk',sans-serif;font-size:15.5px;font-weight:700;color:#fff;letter-spacing:-0.01em;}
+.side-brand .brand-text p{margin:2px 0 0;font-size:9.5px;color:#7fd9cc;text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+
+.side-section-label{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.32);padding:18px 20px 6px;}
+nav.side-nav{padding:0 10px;display:flex;flex-direction:column;gap:2px;}
+.side-nav-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:rgba(255,255,255,.72);text-decoration:none;font-size:13.5px;font-weight:600;cursor:pointer;border:none;background:none;width:100%;text-align:left;}
+.side-nav-btn svg{width:16px;height:16px;flex-shrink:0;opacity:.85;}
+.side-nav-btn:hover{background:rgba(255,255,255,.06);color:#fff;}
+.side-nav-btn.active{background:var(--teal-dark);color:#fff;box-shadow:var(--shadow);}
+.side-nav-btn.active svg{opacity:1;}
+
+.side-foot{margin-top:auto;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.4);}
+
+.main-col{flex:1;min-width:0;}
+.app{max-width:1280px;margin:0;padding:22px 24px 60px;}
+
+.hamb{display:none;background:#fff;border:1px solid var(--line);border-radius:8px;width:38px;height:38px;align-items:center;justify-content:center;cursor:pointer;margin-bottom:14px;}
+.sidebar-backdrop{display:none;}
+@media (max-width:880px){
+  .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .2s ease;box-shadow:0 0 40px rgba(0,0,0,.3);}
+  .sidebar.open{transform:translateX(0);}
+  .hamb{display:flex;}
+  .app{padding:16px 16px 40px;}
+  .sidebar-backdrop{position:fixed;inset:0;background:rgba(11,35,64,.4);z-index:40;}
+  .sidebar-backdrop.show{display:block;}
+}
+
+/* header */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{width:40px;height:40px;border-radius:9px;background:linear-gradient(135deg,var(--navy),var(--teal-dark));display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.brand-mark svg{width:22px;height:22px;}
+.brand-text h1{font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;margin:0;color:var(--navy);letter-spacing:-0.01em;}
+.brand-text p{margin:1px 0 0;font-size:11.5px;color:var(--ink-soft);letter-spacing:.04em;text-transform:uppercase;font-weight:600;}
+
+.tabs{display:flex;gap:4px;background:var(--paper-2);padding:4px;border-radius:10px;border:1px solid var(--line);}
+.tab-btn{border:none;background:transparent;padding:9px 16px;border-radius:7px;font-family:'Inter';font-weight:600;font-size:13px;color:var(--ink-soft);cursor:pointer;transition:.15s;}
+.tab-btn.active{background:var(--navy);color:#fff;box-shadow:var(--shadow);}
+.tab-btn:not(.active):hover{color:var(--navy);}
+
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* saved OB (buyer-wise) */
+.saved-toolbar{margin-bottom:14px;}
+.saved-search-box{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:11px 14px;}
+.saved-search-box svg{width:16px;height:16px;color:var(--ink-soft);flex-shrink:0;}
+.saved-search-box input{border:none;outline:none;font-size:13.5px;font-family:'Inter';width:100%;color:var(--ink);background:transparent;}
+.saved-search-box input::placeholder{color:#9aa1ab;}
+
+.buyer-group{margin-bottom:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;}
+.buyer-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer;background:var(--paper-2);transition:.15s;}
+.buyer-group-head:hover{background:#EFEAE0;}
+.buyer-group-head .bg-left{display:flex;align-items:center;gap:10px;}
+.buyer-group-head h3{margin:0;font-family:'Space Grotesk';font-size:13.5px;font-weight:700;color:var(--navy);text-transform:lowercase;}
+.buyer-group-head .bg-right{display:flex;align-items:center;gap:8px;color:var(--ink-soft);}
+.buyer-group-head .cnt{font-family:'Inter';font-size:12px;color:var(--ink-soft);font-weight:600;}
+.buyer-group-head .chev{width:15px;height:15px;transition:transform .18s ease;flex-shrink:0;}
+.buyer-group.open .buyer-group-head .chev{transform:rotate(90deg);}
+.buyer-group-body{max-height:0;overflow:hidden;transition:max-height .22s ease;}
+.buyer-group.open .buyer-group-body{max-height:2000px;}
+.buyer-group-body-inner{padding:14px 16px 16px;border-top:1px solid var(--line);}
+.style-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 4px;border-bottom:1px solid var(--paper-2);}
+.style-row:last-child{border-bottom:none;}
+.style-row.hl{background:rgba(22,163,148,.06);border-radius:8px;padding-left:10px;padding-right:10px;}
+.style-row .sr-name{font-weight:700;color:var(--ink);font-size:13.5px;margin-bottom:3px;}
+.style-row .sr-name.saved-open-name,.style-row .sr-name.sr-open-name{cursor:pointer;}
+.style-row .sr-name.saved-open-name:hover,.style-row .sr-name.sr-open-name:hover{color:var(--teal-dark);text-decoration:underline;}
+.style-row .sr-meta{font-size:11.5px;color:var(--ink-soft);line-height:1.5;}
+.style-row .sr-actions{display:flex;gap:8px;flex-shrink:0;}
+.btn-edit{border:1.5px solid var(--amber);color:var(--amber);background:#fff;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;}
+.btn-edit:hover{background:rgba(226,163,53,.08);}
+.btn-edit svg{width:13px;height:13px;}
+.btn-del-icon{border:1.5px solid var(--line);color:var(--ink-soft);background:#fff;border-radius:20px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.btn-del-icon:hover{border-color:var(--danger);color:var(--danger);}
+.btn-del-icon svg{width:14px;height:14px;}
+.saved-empty{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+.saved-empty svg{width:36px;height:36px;opacity:.4;margin-bottom:10px;}
+
+/* revisions ("As Per Sample") nested under their original style row */
+.style-row-wrap{border-bottom:1px solid var(--paper-2);}
+.style-row-wrap:last-child{border-bottom:none;}
+.style-row-wrap .style-row{border-bottom:none;padding:13px 4px;}
+.rev-list{margin:0 4px 10px 18px;border-left:2px solid var(--line);padding-left:14px;display:flex;flex-direction:column;gap:8px;}
+.rev-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 10px;background:var(--paper-2);border-radius:8px;}
+.rev-row.hl{background:rgba(124,111,224,.10);}
+.rev-badge-row{margin-bottom:3px;}
+.rev-badge{display:inline-block;background:rgba(124,111,224,.14);color:#7C6FE0;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:20px;}
+
+/* compare modal */
+.cmp-list{padding:6px 26px 14px;}
+.cmp-section-title{font-family:'Space Grotesk';font-size:12.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em;margin:16px 0 8px;}
+.cmp-section-title:first-child{margin-top:0;}
+.cmp-row{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;}
+.cmp-row.cmp-changed{background:rgba(226,163,53,.08);}
+.cmp-row.cmp-added{background:rgba(22,163,148,.08);grid-template-columns:1fr auto;}
+.cmp-row.cmp-removed{background:rgba(193,80,63,.08);grid-template-columns:1fr auto;}
+.cmp-field{font-weight:700;color:var(--ink);}
+.cmp-before{color:var(--ink-soft);font-family:'JetBrains Mono';font-size:12.5px;text-decoration:line-through;}
+.cmp-after{color:var(--teal-dark);font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;}
+.cmp-arrow{color:var(--ink-soft);}
+.cmp-row.cmp-added .cmp-field{color:var(--teal-dark);}
+.cmp-row.cmp-removed .cmp-field{color:var(--danger);text-decoration:line-through;}
+
+/* dashboard */
+.dash-hero{background:linear-gradient(120deg,var(--navy) 0%, var(--teal-dark) 130%);border-radius:14px;padding:26px 28px;color:#fff;position:relative;overflow:hidden;margin-bottom:18px;box-shadow:var(--shadow);}
+.dash-hero::after{content:'';position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.09),transparent 70%);}
+.dash-hero h2{margin:0 0 6px;font-family:'Space Grotesk';font-size:21px;font-weight:700;position:relative;}
+.dash-hero p{margin:0 0 16px;font-size:13px;color:rgba(255,255,255,.78);max-width:460px;line-height:1.5;position:relative;}
+.dash-hero-btn{position:relative;background:#fff;color:var(--navy);border:none;padding:10px 17px;border-radius:9px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;transition:.15s;}
+.dash-hero-btn:hover{background:var(--paper-2);}
+.dash-hero-btn svg{width:14px;height:14px;}
+
+.dash-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+@media (max-width:900px){.dash-stat-grid{grid-template-columns:repeat(2,1fr);}}
+.dash-stat-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:15px 16px;display:flex;flex-direction:column;gap:11px;}
+.dash-stat-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
+.dash-stat-icon svg{width:17px;height:17px;}
+.dash-stat-label{font-size:11px;color:var(--ink-soft);font-weight:600;}
+.dash-stat-val{font-family:'JetBrains Mono';font-size:21px;font-weight:700;color:var(--navy);}
+.dash-stat-grid-2{grid-template-columns:repeat(2,1fr);}
+@media (max-width:600px){.dash-stat-grid-2{grid-template-columns:1fr;}}
+.dash-stat-card-clickable{cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;}
+.dash-stat-card-clickable:hover{transform:translateY(-2px);box-shadow:0 2px 6px rgba(11,35,64,.08), 0 10px 22px rgba(11,35,64,.10);border-color:var(--teal);}
+.dash-stat-card-clickable:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+.dash-stat-tap{font-size:11.5px;font-weight:600;color:var(--teal-dark);display:flex;align-items:center;gap:4px;margin-top:-2px;}
+.dash-stat-tap svg{width:12px;height:12px;}
+.dic-teal{background:rgba(22,163,148,.12);color:var(--teal-dark);}
+.dic-violet{background:rgba(124,111,224,.13);color:#7C6FE0;}
+.dic-amber{background:rgba(226,163,53,.15);color:var(--amber);}
+.dic-slate{background:rgba(91,100,114,.12);color:var(--ink-soft);}
+
+.gt-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--paper-2);}
+.gt-row:last-child{border-bottom:none;}
+.gt-label{width:110px;flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--ink);}
+.gt-bar-track{flex:1;height:9px;background:var(--paper-2);border-radius:20px;overflow:hidden;}
+.gt-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-dark));border-radius:20px;}
+.gt-count{width:26px;text-align:right;font-family:'JetBrains Mono';font-weight:700;font-size:12.5px;color:var(--navy);flex-shrink:0;}
+.dash-two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;align-items:start;}
+@media (max-width:900px){.dash-two-col{grid-template-columns:1fr;}}
+.recent-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--paper-2);}
+.recent-row:last-child{border-bottom:none;}
+.recent-row .rr-name{font-size:12.5px;font-weight:700;color:var(--ink);}
+.recent-row .rr-meta{font-size:11px;color:var(--ink-soft);margin-top:1px;}
+.recent-row .rr-smv{font-family:'JetBrains Mono';font-weight:700;color:var(--navy);font-size:12.5px;flex-shrink:0;}
+.dash-empty-note{color:var(--ink-soft);font-size:12.5px;padding:6px 0;}
+
+/* card */
+.card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:18px;}
+.card-title{font-family:'Space Grotesk';font-weight:700;font-size:14px;color:var(--navy);margin:0 0 14px;display:flex;align-items:center;gap:8px;letter-spacing:.01em;}
+.card-title .num{font-family:'JetBrains Mono';font-size:11px;background:var(--teal);color:#fff;width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+/* form grid */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 14px;}
+@media (max-width:700px){.order-details-row{flex-direction:column;}.sketch-col{width:100%;max-width:290px;}}
+.field label{display:block;font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+.field input, .field select{width:100%;padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-family:'Inter';font-size:13.5px;color:var(--ink);background:#fff;transition:.15s;}
+.field input:focus, .field select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,163,148,0.13);}
+.field input[readonly]{background:var(--paper-2);color:var(--navy);font-family:'JetBrains Mono';font-weight:700;}
+
+/* sketch upload */
+.order-details-row{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;}
+.order-fields-grid{flex:1;min-width:280px;}
+.sketch-col{width:290px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;margin:0 auto;}
+.sketch-box{width:290px;height:290px;border:2px dashed var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:var(--paper-2);position:relative;overflow:hidden;flex-shrink:0;transition:.15s;}
+.sketch-box:hover{border-color:var(--teal);}
+.sketch-box img{width:100%;height:100%;object-fit:contain;background:#fff;}
+.sketch-box .ph{text-align:center;color:var(--ink-soft);padding:10px;}
+.sketch-box .ph svg{width:30px;height:30px;margin-bottom:6px;opacity:.5;}
+.sketch-box .ph span{display:block;font-size:12px;font-weight:600;}
+.sketch-remove{position:absolute;top:6px;right:6px;background:rgba(11,35,64,.75);color:#fff;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;}
+.sketch-change{position:absolute;bottom:6px;left:6px;background:rgba(11,35,64,.75);color:#fff;border:none;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;}
+.sketch-caption{font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.5;}
+.lightbox-backdrop{position:fixed;inset:0;background:rgba(11,35,64,.88);display:flex;align-items:center;justify-content:center;z-index:2000;padding:36px;}
+.lightbox-backdrop img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+.lightbox-close{position:absolute;top:20px;right:24px;background:rgba(255,255,255,.15);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:20px;cursor:pointer;}
+.lightbox-close:hover{background:rgba(255,255,255,.28);}
+
+/* summary strip - signature element */
+.summary-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:var(--navy);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);margin-bottom:18px;}
+.summary-cell{padding:16px 18px;border-right:1px solid rgba(255,255,255,0.09);position:relative;}
+.summary-cell:last-child{border-right:none;}
+.summary-cell.accent{background:var(--teal-dark);}
+.summary-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,0.55);margin-bottom:6px;}
+.summary-value{font-family:'JetBrains Mono';font-size:22px;font-weight:700;color:#fff;line-height:1;}
+.summary-value small{font-size:12px;font-weight:600;opacity:.7;margin-left:2px;}
+@media (max-width:900px){.summary-strip{grid-template-columns:repeat(2,1fr);}.summary-cell:nth-child(2n){border-right:none;}}
+
+/* operation table */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:9px;}
+table.optbl{width:100%;border-collapse:collapse;min-width:760px;}
+table.optbl thead th{background:var(--paper-2);color:var(--navy);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:10px 10px;text-align:left;border-bottom:1.5px solid var(--line);white-space:nowrap;}
+table.optbl tbody td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+table.optbl tbody tr:hover{background:#FBFAF6;}
+table.optbl tbody tr:last-child td{border-bottom:none;}
+.sl-cell{font-family:'JetBrains Mono';font-weight:700;color:var(--ink-soft);width:34px;text-align:center;font-size:12px;}
+.optbl select, .optbl input{width:100%;padding:6px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:12.5px;font-family:'Inter';background:#fff;}
+.optbl input.num{font-family:'JetBrains Mono';font-weight:600;text-align:right;}
+.optbl .machine-badge{display:inline-block;padding:3px 9px;border-radius:20px;background:rgba(22,163,148,.12);color:var(--teal-dark);font-family:'JetBrains Mono';font-weight:700;font-size:11px;white-space:nowrap;}
+.smv-val{font-family:'JetBrains Mono';font-weight:700;color:var(--navy);font-size:13px;}
+.target-val{font-family:'JetBrains Mono';font-weight:700;color:var(--amber);font-size:13px;}
+.row-del{background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;}
+.row-del:hover{background:rgba(193,80,63,.1);}
+.row-edit{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;}
+.row-edit:hover{background:rgba(11,35,64,.06);color:var(--navy);}
+.md-row-actions{display:flex;gap:2px;align-items:center;}
+.md-edit-actions{display:flex;gap:4px;align-items:center;}
+.row-save{background:none;border:none;color:var(--teal-dark);cursor:pointer;font-size:15px;font-weight:700;padding:4px 6px;border-radius:6px;}
+.row-save:hover{background:rgba(22,163,148,.12);}
+.row-cancel{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;}
+.row-cancel:hover{background:rgba(91,100,114,.12);color:var(--danger);}
+.md-edit-input{width:100%;padding:6px 8px;border:1.5px solid var(--teal);border-radius:6px;font-size:12.5px;font-family:'Inter';background:#fff;}
+.md-edit-input.md-edit-smv{font-family:'JetBrains Mono';font-weight:600;}
+tr.md-rows-row.editing{background:rgba(22,163,148,.06);}
+tfoot td{padding:11px 10px;background:var(--paper-2);font-weight:700;border-top:2px solid var(--navy);}
+.tfoot-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+.tfoot-val{font-family:'JetBrains Mono';font-size:15px;color:var(--navy);}
+
+/* section headings inside operation table */
+tr.section-heading td{background:var(--navy);color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:12.5px;letter-spacing:.03em;padding:9px 10px;border-bottom:none;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
+tr.section-heading .section-meta{font-family:'JetBrains Mono';font-weight:600;font-size:11px;color:rgba(255,255,255,.7);margin-left:8px;}
+tr.section-heading .section-remove{float:right;background:rgba(255,255,255,.14);border:none;color:#fff;width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:13px;line-height:1;}
+tr.section-heading .section-remove:hover{background:rgba(255,255,255,.28);}
+tr.section-add-row td{padding:6px 10px;border-bottom:1px solid var(--line);background:#FBFAF6;}
+.section-add-btn{background:none;border:none;color:var(--teal-dark);font-weight:700;font-size:12px;cursor:pointer;padding:4px 2px;}
+.section-add-btn:hover{text-decoration:underline;}
+.op-name-text{font-size:13px;color:var(--ink);padding:4px 2px;display:block;}
+.op-color-btn{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);cursor:pointer;padding:0;vertical-align:middle;margin-right:4px;}
+.op-color-btn:hover{border-color:var(--navy);}
+.op-color-popover{position:absolute;top:100%;right:0;margin-top:4px;z-index:60;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:8px;display:flex;gap:7px;}
+.op-color-popover .swatch{width:20px;height:20px;border-radius:50%;cursor:pointer;border:1.5px solid rgba(0,0,0,.1);padding:0;}
+.op-color-popover .swatch.reset{background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-soft);line-height:1;}
+tr.op-add-inline td{background:#FBFAF6;vertical-align:top;padding:10px 8px;}
+.inline-add-select{width:100%;padding:7px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:12.5px;font-family:'Inter';background:#fff;margin-bottom:6px;}
+.inline-add-newtoggle{background:none;border:none;color:var(--teal-dark);font-weight:600;font-size:11.5px;cursor:pointer;padding:2px;text-decoration:underline;}
+.inline-add-newform{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.inline-add-newform input{padding:7px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:12.5px;font-family:'Inter';}
+.inline-add-newform input.iaf-name{flex:1.4;min-width:140px;}
+.inline-add-newform input.iaf-mc{flex:1;min-width:80px;}
+.inline-add-newform input.iaf-smv{flex:0.7;min-width:70px;}
+.add-section-form{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.add-section-form select{padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:13px;background:#fff;}
+.sections-empty{text-align:center;padding:26px 10px;color:var(--ink-soft);font-size:13px;}
+
+/* operation picker modal */
+.modal-backdrop{position:fixed;inset:0;background:rgba(11,35,64,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:28px;}
+.modal-box{background:#fff;border-radius:16px;width:100%;max-width:760px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(11,35,64,.4);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:22px 26px 16px;border-bottom:1px solid var(--line);}
+.modal-head h3{margin:0;font-family:'Space Grotesk';font-size:19px;color:var(--navy);}
+.modal-head .modal-sub{font-size:12.5px;color:var(--ink-soft);margin-top:4px;font-weight:500;font-family:'Inter';}
+.modal-close{background:none;border:none;font-size:24px;color:var(--ink-soft);cursor:pointer;line-height:1;padding:4px 8px;border-radius:8px;}
+.modal-close:hover{background:var(--paper-2);color:var(--navy);}
+.modal-search{padding:16px 26px;border-bottom:1px solid var(--line);}
+.modal-search input{width:100%;padding:11px 14px;border:1.5px solid var(--line);border-radius:9px;font-size:13.5px;font-family:'Inter';background:var(--paper);transition:.15s;}
+.modal-search input:focus{outline:none;border-color:var(--teal);background:rgba(22,163,148,.06);box-shadow:0 0 0 3px rgba(22,163,148,.12);}
+.modal-list{overflow-y:auto;padding:10px 14px 14px;flex:1;}
+.modal-group-label{background:var(--navy);color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:12px;letter-spacing:.03em;padding:8px 12px;border-radius:7px;margin:14px 2px 4px;}
+.modal-group-label:first-child{margin-top:2px;}
+.modal-op-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 14px;cursor:pointer;border-bottom:1px solid var(--paper-2);border-radius:8px;transition:.12s;}
+.modal-op-row:last-child{border-bottom:none;}
+.modal-op-row:hover{background:rgba(226,163,53,.09);}
+.modal-op-main{min-width:0;}
+.modal-op-name{font-family:'Inter';font-size:13.5px;font-weight:700;color:var(--ink);letter-spacing:.005em;}
+.modal-op-row.no-smv .modal-op-name{color:var(--amber);}
+.modal-op-sub{font-family:'Inter';font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-top:3px;}
+.modal-op-sub .mc-tag{color:var(--teal-dark);font-family:'JetBrains Mono';}
+.modal-op-right{display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.modal-op-smv-big{font-family:'JetBrains Mono';font-weight:700;color:var(--navy);font-size:15.5px;min-width:38px;text-align:right;}
+.modal-op-row.no-smv .modal-op-smv-big{color:var(--ink-soft);font-weight:500;}
+.modal-op-add{background:var(--teal);color:#fff;border:none;width:30px;height:30px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;flex-shrink:0;line-height:1;transition:.12s;}
+.modal-group-flex{display:flex;align-items:stretch;gap:12px;}
+.modal-group-rows{flex:1;min-width:0;}
+.modal-group-thumb{width:84px;flex-shrink:0;display:flex;align-items:flex-start;justify-content:center;padding-top:2px;}
+.modal-group-thumb .mgi-box-view{width:76px;height:76px;border-radius:8px;background:var(--paper-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:zoom-in;flex-shrink:0;}
+.modal-group-thumb .mgi-box-view:hover{border-color:var(--teal);}
+.modal-group-thumb .mgi-box-view img{width:100%;height:100%;object-fit:contain;}
+@media (max-width:640px){.modal-group-thumb{width:64px;}.modal-group-thumb .mgi-box-view{width:56px;height:56px;}}
+.modal-op-add:hover{background:var(--teal-dark);transform:translateY(-1px);}
+.modal-foot{padding:14px 26px;border-top:1px solid var(--line);text-align:right;}
+.modal-empty{text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:13px;}
+
+/* buttons */
+.btn{font-family:'Inter';font-weight:600;font-size:13px;border-radius:8px;padding:9px 16px;cursor:pointer;border:1.5px solid transparent;transition:.15s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--teal);color:#fff;}
+.btn-primary:hover{background:var(--teal-dark);}
+.btn-ghost{background:#fff;color:var(--navy);border-color:var(--line);}
+.btn-ghost:hover{border-color:var(--navy);}
+.btn-sm{padding:6px 11px;font-size:12px;}
+.actions-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:space-between;align-items:center;}
+.actions-left{display:flex;gap:10px;flex-wrap:wrap;}
+
+/* mobile kebab menu for the actions-row buttons */
+.ob-mobile-menu-wrap{display:none;position:relative;justify-content:flex-end;margin-bottom:10px;}
+.ob-menu-btn{width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--navy);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.ob-menu-btn:hover{background:var(--paper-2);}
+.ob-menu-dropdown{display:none;flex-direction:column;gap:2px;position:absolute;right:0;top:44px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);min-width:190px;padding:6px;z-index:60;}
+.ob-menu-dropdown.open{display:flex;}
+.ob-menu-item{border:none;background:none;text-align:left;padding:9px 12px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;}
+.ob-menu-item:hover{background:var(--paper-2);}
+.ob-menu-item-primary{color:var(--teal-dark);}
+.ob-menu-sep{height:1px;background:var(--line);margin:4px 2px;}
+@media (max-width:880px){
+  .ob-mobile-menu-wrap{display:flex;}
+  .actions-row{display:none;}
+}
+
+/* machine mix chips */
+.mix-wrap{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+.mix-chip{background:var(--paper-2);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:11.5px;font-family:'JetBrains Mono';font-weight:600;color:var(--navy);}
+.mix-chip b{color:var(--teal-dark);}
+
+/* master data tab */
+.md-toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.md-search{flex:1;min-width:200px;position:relative;}
+.md-search input{width:100%;padding:9px 12px 9px 34px;border:1.5px solid var(--line);border-radius:8px;font-size:13.5px;}
+.md-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--ink-soft);}
+.style-pill{padding:6px 13px;border-radius:20px;border:1.5px solid var(--line);background:#fff;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;white-space:nowrap;}
+.style-pill.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.style-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;max-height:42px;overflow:hidden;padding:2px;}
+.style-pills.expanded{max-height:none;overflow:visible;}
+.style-pills-toggle-row{margin-bottom:14px;}
+.style-pills-toggle{border:none;background:none;color:var(--teal-dark);font-size:12px;font-weight:700;cursor:pointer;padding:4px 2px;text-decoration:underline;}
+
+.empty-note{text-align:center;padding:30px;color:var(--ink-soft);font-size:13px;}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(11,35,64,.25);opacity:0;pointer-events:none;transition:.25s;z-index:999;}
+.toast.show{opacity:1;transform:translate(-50%,-6px);}
+
+.add-op-form{display:grid;grid-template-columns:1.4fr 1fr 0.8fr 0.6fr auto;gap:8px;margin-top:12px;align-items:end;}
+@media (max-width:800px){.add-op-form{grid-template-columns:1fr 1fr;}}
+.create-op-form{display:none;flex-direction:column;gap:12px;margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);}
+.create-op-header .field{max-width:340px;}
+.create-op-rows{display:flex;flex-direction:column;gap:8px;}
+.create-op-row{display:grid;grid-template-columns:1.4fr 0.8fr 0.6fr auto;gap:8px;align-items:center;}
+.create-op-row input{width:100%;padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-family:'Inter';font-size:13px;color:var(--ink);background:#fff;}
+.create-op-row input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,163,148,0.13);}
+.cor-remove{border:1.5px solid var(--line);background:#fff;color:var(--ink-soft);border-radius:20px;width:30px;height:30px;cursor:pointer;flex-shrink:0;font-size:15px;line-height:1;}
+.cor-remove:hover{border-color:var(--danger);color:var(--danger);}
+.create-op-footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+@media (max-width:800px){.create-op-row{grid-template-columns:1fr 1fr;}}
+.md-rows-row{cursor:pointer;transition:.12s;}
+.md-rows-row.selected{background:rgba(22,163,148,.10);}
+.md-rows-row.selected td:first-child{box-shadow:inset 3px 0 0 var(--teal);}
+
+/* master data — grouped-by-style blocks, compact rows, reference image per style */
+.md-groups-wrap{display:flex;flex-direction:column;gap:12px;margin-top:14px;}
+.md-group{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;}
+.md-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:rgba(226,163,53,.20);border-bottom:1px solid var(--line);cursor:context-menu;}
+.md-group-head h4{margin:0;font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.02em;}
+.md-group-head .mgh-cnt{font-size:10.5px;color:var(--ink-soft);font-weight:600;white-space:nowrap;}
+.md-group-body{display:flex;align-items:stretch;}
+.md-group-table-wrap{flex:1;min-width:0;overflow-x:auto;}
+table.optbl-compact{width:100%;border-collapse:collapse;table-layout:fixed;}
+table.optbl-compact thead th{background:var(--paper-2);color:var(--ink-soft);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:5px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;}
+table.optbl-compact thead th:nth-child(1), table.optbl-compact tbody td:nth-child(1){width:56%;}
+table.optbl-compact thead th:nth-child(2), table.optbl-compact tbody td:nth-child(2){width:19%;}
+table.optbl-compact thead th:nth-child(3), table.optbl-compact tbody td:nth-child(3){width:16%;text-align:right;}
+table.optbl-compact thead th:nth-child(4), table.optbl-compact tbody td:nth-child(4){width:9%;text-align:center;}
+table.optbl-compact tbody td{padding:4px 8px;border-bottom:1px solid var(--paper-2);vertical-align:middle;font-size:11.5px;word-break:break-word;}
+table.optbl-compact tbody tr:last-child td{border-bottom:none;}
+table.optbl-compact tbody tr:hover{background:#FBFAF6;}
+table.optbl-compact .machine-badge{padding:2px 7px;font-size:10px;}
+table.optbl-compact .smv-val{font-size:11.5px;}
+table.optbl-compact .row-del{width:20px;height:20px;font-size:12px;}
+.md-group-image{width:130px;flex-shrink:0;border-left:1px solid var(--line);display:flex;align-items:center;justify-content:center;background:var(--paper-2);}
+.md-group-image .mgi-box{position:relative;width:96px;height:96px;border-radius:8px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0;}
+.md-group-image .mgi-box:hover{border-color:var(--teal);}
+.md-group-image .mgi-box img{width:100%;height:100%;object-fit:contain;}
+.md-group-image .mgi-ph{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink-soft);font-size:9.5px;text-align:center;padding:8px;}
+.md-group-image .mgi-ph svg{width:18px;height:18px;opacity:.5;}
+.md-group-image .mgi-box:hover .mgi-ph{color:var(--teal-dark);}
+.mgi-remove{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;background:rgba(11,35,64,.72);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;line-height:1;}
+.mgi-change{position:absolute;bottom:4px;left:4px;width:20px;height:20px;border-radius:50%;background:rgba(11,35,64,.72);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;line-height:1;}
+@media (max-width:700px){.md-group-image{width:96px;}.md-group-image .mgi-box{width:76px;height:76px;}}
+
+.op-heading-text{color:#E2A335;font-weight:700;}
+
+/* ---------- Layout Builder ---------- */
+.layout-head-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+@media (max-width:820px){.layout-head-grid{grid-template-columns:repeat(2,1fr);}}
+.layout-head-grid .field input:disabled{background:var(--paper-2);color:var(--ink-soft);font-weight:600;cursor:not-allowed;}
+.layout-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+@media (max-width:820px){.layout-summary-grid{grid-template-columns:repeat(2,1fr);}}
+.layout-stat-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow);}
+.layout-stat-label{font-size:10.5px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.layout-stat-val{font-family:'JetBrains Mono';font-size:19px;font-weight:700;color:var(--navy);}
+.layout-group{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;margin-bottom:14px;}
+.layout-group-head{padding:9px 14px;background:rgba(22,163,148,.10);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.layout-group-head h4{margin:0;font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.02em;}
+.layout-group-head .lgh-cnt{font-size:10.5px;color:var(--ink-soft);font-weight:600;white-space:nowrap;}
+table.optbl-layout{width:100%;border-collapse:collapse;min-width:760px;}
+table.optbl-layout thead th{background:var(--paper-2);color:var(--ink-soft);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;}
+table.optbl-layout tbody td{padding:6px 9px;border-bottom:1px solid var(--paper-2);vertical-align:middle;font-size:12px;}
+table.optbl-layout tbody tr:last-child td{border-bottom:none;}
+table.optbl-layout tbody tr:hover{background:#FBFAF6;}
+table.optbl-layout td.num,table.optbl-layout th.num{text-align:right;}
+.ly-smv-locked{font-family:'JetBrains Mono';font-weight:700;color:var(--ink-soft);background:var(--paper-2);border-radius:6px;padding:3px 8px;display:inline-block;}
+.ly-mp-input{width:56px;padding:4px 2px;border:none;border-bottom:1.5px solid var(--line);border-radius:0;background:transparent;font-family:'JetBrains Mono';font-weight:600;font-size:12px;text-align:right;}
+.ly-mp-input:focus{outline:none;border-bottom-color:var(--teal);}
+.ly-heading-row td{background:rgba(226,163,53,.10);}
+.ly-heading-row .ly-heading-text{color:var(--amber);font-weight:700;}
+.ly-sketch-box{width:110px;height:110px;border-radius:9px;border:1px solid var(--line);background:var(--paper-2);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0;}
+.ly-sketch-box img{width:100%;height:100%;object-fit:contain;}
+.ly-sketch-box .ly-sketch-ph{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink-soft);font-size:9.5px;text-align:center;padding:6px;}
+.ly-sketch-box .ly-sketch-ph svg{width:20px;height:20px;opacity:.5;}
+.layout-head-row{display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;}
+.layout-head-row .layout-head-grid{flex:1;margin-bottom:0;}
+.pitch-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-top:6px;}
+.pitch-card h4{margin:0 0 12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:var(--navy);}
+.pitch-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+@media (max-width:820px){.pitch-stat-grid{grid-template-columns:repeat(2,1fr);}}
+.ly-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-family:'JetBrains Mono';font-weight:700;font-size:11px;white-space:nowrap;}
+.ly-badge.good{background:rgba(22,163,148,.14);color:var(--teal-dark);}
+.ly-badge.warn{background:rgba(226,163,53,.16);color:var(--amber);}
+.ly-badge.bad{background:rgba(193,80,63,.13);color:var(--danger);}
+.ly-badge.flat{background:var(--paper-2);color:var(--ink-soft);}
+.layout-hint{font-size:11.5px;color:var(--ink-soft);margin:-6px 0 16px;}
+
+/* ---------- Login overlay ---------- */
+.login-overlay{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:3000;padding:20px;}
+.login-card{width:100%;max-width:360px;background:#fff;border-radius:14px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:14px;}
+.login-brand-mark{width:44px;height:44px;border-radius:11px;background:var(--teal);display:flex;align-items:center;justify-content:center;margin:0 auto 4px;}
+.login-brand-mark svg{width:22px;height:22px;}
+.user-perm-note{margin:-4px 0 2px;font-size:11.5px;color:var(--ink-soft);font-style:italic;}
+.user-edit-banner{background:rgba(226,163,53,.12);border:1px solid rgba(226,163,53,.35);color:var(--amber);border-radius:8px;padding:9px 12px;font-size:12.5px;font-weight:600;}
+.user-form-btn-row{display:flex;gap:10px;}
+.user-row-edit{border:1.5px solid var(--line);background:#fff;color:var(--ink-soft);border-radius:7px;width:28px;height:28px;flex-shrink:0;cursor:pointer;font-size:13px;}
+.user-row-edit:hover{border-color:var(--teal-dark);color:var(--teal-dark);}
+.user-row-actions{display:flex;gap:6px;flex-shrink:0;}
+.login-brand-name{margin:0 0 4px;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:var(--navy);letter-spacing:-0.01em;}
+.login-card h2{margin:0;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:var(--ink-soft);}
+.login-error{background:rgba(193,80,63,.1);color:var(--danger);border-radius:7px;padding:8px 10px;font-size:12.5px;font-weight:600;text-align:center;}
+.login-btn{width:100%;justify-content:center;margin-top:4px;}
+.pw-field-wrap{position:relative;}
+.pw-field-wrap input{width:100%;padding-right:38px;}
+.pw-toggle-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--ink-soft);cursor:pointer;padding:5px;border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.pw-toggle-btn:hover{color:var(--teal-dark);background:rgba(22,163,148,.08);}
+.pw-toggle-btn svg{width:18px;height:18px;}
+
+/* ---------- Manage Users ---------- */
+.user-form{display:flex;flex-direction:column;gap:14px;max-width:640px;margin-top:6px;}
+.user-form .field{max-width:100%;}
+.chk-row{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);user-select:none;}
+.chk-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--teal);cursor:pointer;flex-shrink:0;}
+.user-admin-row{padding:8px 10px;background:var(--paper-2);border-radius:8px;}
+.user-perm-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+.user-perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;}
+@media (max-width:600px){.user-perm-grid{grid-template-columns:1fr;}}
+.user-list-label{margin-top:22px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:var(--navy);border-top:1px solid var(--line);padding-top:16px;}
+.user-row-card{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:9px;margin-top:10px;}
+.user-row-main .u-name{font-weight:700;color:var(--navy);font-size:13.5px;}
+.user-row-main .u-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;background:rgba(226,163,53,.2);color:#8a6415;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.user-row-main .u-perms{margin-top:5px;font-size:11.5px;color:var(--ink-soft);}
+.user-row-del{border:1.5px solid var(--line);background:#fff;color:var(--danger);border-radius:7px;width:28px;height:28px;flex-shrink:0;cursor:pointer;font-size:15px;}
+.user-row-del:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+.user-empty-note{margin-top:12px;color:var(--ink-soft);font-size:13px;}
+
+.op-row-selectable{cursor:pointer;transition:.12s;}
+.op-row-selectable.op-row-selected{background:rgba(22,163,148,.10);}
+.op-row-selectable.op-row-selected td:first-child{box-shadow:inset 3px 0 0 var(--teal);}
+
+/* right-click context menu for operation rows */
+.ctx-menu{position:fixed;z-index:1200;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(11,35,64,.22);padding:6px;min-width:210px;font-family:'Inter';}
+.ctx-item{display:flex;align-items:center;width:100%;background:none;border:none;text-align:left;padding:9px 12px;border-radius:7px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;}
+.ctx-item:hover:not(:disabled){background:var(--paper-2);}
+.ctx-item:disabled{color:#b7bcc4;cursor:not-allowed;}
+.ctx-item.ctx-danger{color:var(--danger);}
+.ctx-item.ctx-danger:hover:not(:disabled){background:rgba(193,80,63,.08);}
+.ctx-sep{height:1px;background:var(--line);margin:5px 4px;}
+tr.op-insert-inline td{background:#FBFAF6;vertical-align:top;padding:10px 8px;}
+.op-sel-banner{display:flex;align-items:center;gap:10px;background:rgba(22,163,148,.10);border:1px solid rgba(22,163,148,.35);color:var(--teal-dark);font-size:12.5px;font-weight:600;padding:9px 13px;border-radius:8px;margin-bottom:10px;}
+.op-sel-banner button{margin-left:auto;background:none;border:none;color:var(--ink-soft);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;}
+.sel-banner{display:flex;align-items:center;gap:10px;background:rgba(22,163,148,.10);border:1px solid rgba(22,163,148,.35);color:var(--teal-dark);font-size:12.5px;font-weight:600;padding:9px 13px;border-radius:8px;margin-bottom:10px;}
+.sel-banner button{margin-left:auto;background:none;border:none;color:var(--ink-soft);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;}
+.md-hint{font-size:11.5px;color:var(--ink-soft);margin:-6px 0 12px;}
+
+@media print{
+  .sidebar,.hamb,.actions-row,.no-print{display:none !important;}
+  body{background:#fff;}
+  .card{box-shadow:none;border:1px solid #999;}
+  .summary-strip{background:#fff !important;border:1px solid #999;}
+  .summary-cell{border-right:1px solid #ccc;}
+  .summary-label,.summary-value{color:#000 !important;}
+}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
+body.pdf-mode .sidebar,body.pdf-mode .hamb,body.pdf-mode .actions-row{display:none !important;}
+body.pdf-mode .no-print{display:none !important;}
+body.pdf-mode .main-col{margin:0;padding:0;}
+body.pdf-mode .app{padding:18px;}
+/* make sure the full operation table renders (no horizontal scroll clipping) and the garment image always shows in the exported PDF */
+body.pdf-mode .tbl-wrap{overflow:visible !important;}
+body.pdf-mode table.optbl{min-width:0 !important;width:100% !important;}
+body.pdf-mode .ly-sketch-box{display:flex !important;}
+</style>
+</head>
+<body>
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="brand-mark login-brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12L10 18L20 6" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="login-brand-name">Operation Bulletin</div>
+    <div class="field"><label>Username</label><input id="login-username" type="text" placeholder="Username" autocomplete="username"></div>
+    <div class="field"><label>Password</label>
+      <div class="pw-field-wrap">
+        <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+        <button type="button" class="pw-toggle-btn" id="login-password-toggle" title="Show password" aria-label="Show password">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="login-error" id="login-error" style="display:none;"></div>
+    <button class="btn btn-primary login-btn" id="login-btn">Sign In</button>
+  </div>
+</div>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12L10 18L20 6" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-text">
+        <h1>Operation Bulletin</h1>
+        <p>Cost Sheet Builder</p>
+      </div>
+    </div>
+    <div class="side-section-label">Overview</div>
+    <nav class="side-nav no-print">
+      <button class="side-nav-btn active" data-tab="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+        Dashboard
+      </button>
+    </nav>
+    <div class="side-section-label">Menu</div>
+    <nav class="side-nav no-print">
+      <button class="side-nav-btn" data-tab="costsheet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        New Style
+      </button>
+      <button class="side-nav-btn" data-tab="master">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></svg>
+        Master Data
+      </button>
+      <button class="side-nav-btn" data-tab="layout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Layout
+      </button>
+      <button class="side-nav-btn" data-tab="saved">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8"/></svg>
+        Buyer wise OB Saved
+      </button>
+      <button class="side-nav-btn" data-tab="styles">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+        Styles
+      </button>
+    </nav>
+    <div class="side-section-label">Admin</div>
+    <nav class="side-nav no-print">
+      <button class="side-nav-btn" data-tab="users">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Manage Users
+      </button>
+      <button class="side-nav-btn" id="logout-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        Logout
+      </button>
+    </nav>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <div class="main-col">
+  <div class="app">
+    <button class="hamb no-print" id="hamb" aria-label="Open menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0B2340" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <div class="ob-mobile-menu-wrap no-print" id="ob-mobile-menu-wrap" style="display:none;">
+      <button class="ob-menu-btn" id="ob-menu-btn" aria-label="Actions menu" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+      </button>
+      <div class="ob-menu-dropdown" id="ob-menu-dropdown">
+        <button class="ob-menu-item" data-target="add-row-btn">+ Add Section</button>
+        <button class="ob-menu-item" data-target="add-op-manual-btn">+ Add Operation</button>
+        <button class="ob-menu-item" data-target="master-sheet-btn">Master Sheet</button>
+        <button class="ob-menu-item" data-target="clear-rows-btn">Clear All Sections</button>
+        <div class="ob-menu-sep"></div>
+        <button class="ob-menu-item" data-target="export-excel-btn">Export Excel</button>
+        <button class="ob-menu-item" data-target="save-pdf-btn">Save PDF</button>
+        <button class="ob-menu-item" data-target="close-ob-btn">Close</button>
+        <button class="ob-menu-item ob-menu-item-primary" data-target="save-ob-btn">Save OB</button>
+      </div>
+    </div>
+
+  <!-- ============ DASHBOARD PANEL ============ -->
+  <div class="panel active" id="panel-dashboard">
+    <section class="dash-hero">
+      <h2 id="greetText">Good evening, admin!</h2>
+      <p>Here's what's happening with your Operation Bulletin data today.</p>
+      <button class="dash-hero-btn" id="dashOpenBtn">
+        Open Operation Bulletin
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0B2340" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </section>
+
+    <div class="dash-stat-grid dash-stat-grid-2">
+      <div class="dash-stat-card dash-stat-card-clickable" id="dash-active-styles-card" role="button" tabindex="0">
+        <div class="dash-stat-icon dic-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg></div>
+        <div class="dash-stat-label">Active Styles</div>
+        <div class="dash-stat-val" id="dash-active-styles">0</div>
+        <div class="dash-stat-tap">Tap to view styles <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+      </div>
+      <div class="dash-stat-card dash-stat-card-clickable" id="dash-buyers-card" role="button" tabindex="0">
+        <div class="dash-stat-icon dic-slate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+        <div class="dash-stat-label">Buyers</div>
+        <div class="dash-stat-val" id="dash-buyers">0</div>
+        <div class="dash-stat-tap">Tap to view buyers <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+      </div>
+    </div>
+
+    <div class="dash-two-col">
+      <div class="card">
+        <div class="card-title"><span class="num">G</span>Styles by Garment Type</div>
+        <div id="dash-garment-breakdown"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="num">R</span>Recently Saved OB</div>
+        <div id="dash-recent-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COST SHEET PANEL ============ -->
+  <div class="panel" id="panel-costsheet">
+
+    <div class="card">
+      <div class="card-title"><span class="num">1</span>Order Details</div>
+      <div class="order-details-row">
+        <div class="grid order-fields-grid">
+          <div class="field"><label>Buyer</label><input id="f-buyer" type="text" placeholder="e.g. H&amp;M"></div>
+          <div class="field"><label>Style No</label><input id="f-style" type="text" placeholder="e.g. 478"></div>
+          <div class="field"><label>Description</label><input id="f-description" type="text" placeholder="e.g. Back cut and sew hoodie"></div>
+          <div class="field"><label>Plan Line</label><input id="f-planline" type="text" placeholder="e.g. 2 Line"></div>
+          <div class="field"><label>Order Qty</label><input id="f-orderqty" type="text" placeholder="e.g. 200K"></div>
+          <div class="field"><label>Lead Time (days)</label><input id="f-leadtime" type="number" min="0"></div>
+          <div class="field"><label>Made By</label><input id="f-madeby" type="text"></div>
+          <div class="field"><label>Order Eff %</label><input id="f-ordereff" type="number" min="0" max="100" placeholder="e.g. 65"></div>
+        </div>
+        <div class="sketch-col">
+          <div class="sketch-box" id="sketch-box">
+            <div class="ph" id="sketch-ph">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg>
+              <span>Upload sketch<br>or photo</span>
+            </div>
+          </div>
+          <input type="file" id="sketch-input" accept="image/*" style="display:none">
+          <div class="sketch-caption">Garment sketch / reference photo — click to enlarge</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-strip" id="summary-strip"></div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">2</span>Operation Breakdown <span style="font-weight:500;color:var(--ink-soft);text-transform:none;letter-spacing:0;font-size:12px;">— grouped by section, pulled from Master Data</span></div>
+      <div class="md-hint">Tip: click a row below to select it — the next operation you add to that section will be inserted right below it.</div>
+
+      <div class="op-sel-banner no-print" id="op-sel-banner" style="display:none;"></div>
+
+      <div class="add-section-form no-print" id="add-op-manual-form" style="display:none;">
+        <input type="text" id="aom-name" placeholder="Operation name" style="min-width:200px;padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:13px;">
+        <input type="text" id="aom-machine" placeholder="Machine" style="width:110px;padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:13px;">
+        <input type="number" id="aom-smv" placeholder="SMV" step="0.01" min="0" style="width:90px;padding:9px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:13px;">
+        <button class="btn btn-primary btn-sm" id="aom-save">Add</button>
+        <button class="btn btn-ghost btn-sm" id="aom-cancel">&times;</button>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="optbl">
+          <thead>
+            <tr>
+              <th>SL</th>
+              <th style="min-width:230px;">Operation Name</th>
+              <th style="min-width:90px;">Machine</th>
+              <th style="min-width:80px;">SMV</th>
+              <th style="min-width:90px;">Target/hr</th>
+              <th style="width:36px;"></th>
+            </tr>
+          </thead>
+          <tbody id="op-rows"></tbody>
+          <tfoot>
+            <tr>
+              <td class="tfoot-label" colspan="3">Total SMV (Sew to Pack)</td>
+              <td class="tfoot-val" id="total-smv" colspan="1">0.00</td>
+              <td class="tfoot-label" colspan="1" style="text-align:right;">Operations</td>
+              <td class="tfoot-val" id="total-ops">0</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="mix-wrap" id="machine-mix"></div>
+      <div class="actions-row">
+        <div class="actions-left">
+          <button class="btn btn-primary" id="add-row-btn">+ Add Section</button>
+          <button class="btn btn-ghost" id="add-op-manual-btn">+ Add Operation</button>
+          <button class="btn btn-ghost" id="master-sheet-btn">Master Sheet</button>
+          <button class="btn btn-ghost" id="clear-rows-btn">Clear All Sections</button>
+        </div>
+        <div class="actions-left">
+          <button class="btn btn-ghost" id="export-excel-btn">Export Excel</button>
+          <button class="btn btn-ghost" id="save-pdf-btn">Save PDF</button>
+          <button class="btn btn-ghost" id="close-ob-btn">Close</button>
+          <button class="btn btn-primary" id="save-ob-btn" style="background:var(--amber);">Save OB</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MASTER DATA PANEL ============ -->
+  <div class="panel" id="panel-master">
+    <div class="card">
+      <div class="card-title"><span class="num">M</span>Master Data — Style · Operation · Machine · SMV</div>
+      <div class="md-toolbar">
+        <div class="md-search">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <input type="text" id="md-search-input" placeholder="Search operation name...">
+        </div>
+        <button class="btn btn-ghost btn-sm" id="md-create-toggle">+ Create Operation</button>
+        <button class="btn btn-primary btn-sm" id="md-add-toggle">+ Add Operation</button>
+      </div>
+      <div class="style-pills" id="md-style-pills"></div>
+      <div class="style-pills-toggle-row"><button class="style-pills-toggle" id="style-pills-toggle">Show all styles ▾</button></div>
+      <div class="md-hint">Tip: click a row below to select it, then <b>Add Operation</b> inserts the new row right after it. <b>Create Operation</b> always starts a brand-new operation group (like SIDE POCKET, SIDE ZIPPER PKT) — add as many operations as you need before hitting Save.</div>
+
+      <div class="sel-banner no-print" id="sel-banner" style="display:none;"></div>
+
+      <div class="add-op-form no-print" id="add-op-form" style="display:none;">
+        <div class="field"><label>Style</label><select id="new-op-style"></select></div>
+        <div class="field"><label>Operation Name</label><input id="new-op-name" type="text" placeholder="e.g. COLLAR TOPSTITCH"></div>
+        <div class="field"><label>Machine</label><input id="new-op-machine" type="text" placeholder="e.g. O/L"></div>
+        <div class="field"><label>SMV</label><input id="new-op-smv" type="number" step="0.01" min="0" placeholder="0.00"></div>
+        <button class="btn btn-primary btn-sm" id="new-op-save">Save</button>
+      </div>
+
+      <div class="create-op-form no-print" id="create-op-form" style="display:none;">
+        <div class="create-op-header">
+          <div class="field"><label>New Style / Group Name</label><input id="create-op-group" type="text" placeholder="e.g. SIDE ZIPPER POCKET"></div>
+        </div>
+        <div class="create-op-rows" id="create-op-rows"></div>
+        <div class="create-op-footer">
+          <button class="btn btn-ghost btn-sm" id="create-op-addrow">+ Add another operation</button>
+          <button class="btn btn-primary btn-sm" id="create-op-save">Save Style</button>
+          <button class="btn btn-ghost btn-sm" id="create-op-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="md-groups-wrap" id="md-groups-wrap"></div>
+      <input type="file" id="md-image-input" accept="image/*" style="display:none">
+      <div class="empty-note" id="md-empty" style="display:none;">No operations match your search.</div>
+    </div>
+  </div>
+
+  <!-- ============ LAYOUT BUILDER PANEL ============ -->
+  <div class="panel" id="panel-layout">
+    <div class="card" id="layout-print-card">
+      <div class="card-title"><span class="num">L</span>Layout Builder</div>
+      <div class="empty-note" id="layout-empty-note">No layout open. Go to <b>Buyer wise OB Saved</b>, open a style, and click <b>Copy to Layout</b> — or open a saved layout below.</div>
+
+      <div id="layout-editor" style="display:none;">
+        <div class="layout-head-row">
+          <div class="layout-head-grid">
+            <div class="field"><label>Buyer</label><input id="ly-buyer" type="text" disabled></div>
+            <div class="field"><label>Style No</label><input id="ly-style" type="text" disabled></div>
+            <div class="field"><label>Description</label><input id="ly-description" type="text" disabled></div>
+            <div class="field"><label>Working Hours</label><input id="ly-hours" type="number" min="0" step="0.5"></div>
+            <div class="field"><label>Target Efficiency %</label><input id="ly-eff" type="number" min="0" max="100" step="1" placeholder="e.g. 75"></div>
+          </div>
+          <div class="ly-sketch-box no-print" id="ly-sketch-box" title="Garment reference image">
+            <div class="ly-sketch-ph" id="ly-sketch-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>No image on the OB</span></div>
+          </div>
+        </div>
+        <div class="layout-hint">SMV and Machine are copied from the Operation Bulletin and can't be edited here. Enter Manpower per operation and set Working Hours / Target Efficiency % above — the rest recalculates automatically.</div>
+
+        <div class="layout-summary-grid" id="layout-summary"></div>
+        <div id="layout-groups-wrap"></div>
+        <div id="layout-pitch-wrap"></div>
+
+        <div class="actions-row">
+          <div class="actions-left">
+            <button class="btn btn-primary" id="layout-save-btn" style="background:var(--amber);">Save Layout</button>
+            <button class="btn btn-ghost" id="layout-export-excel-btn">Export Excel</button>
+            <button class="btn btn-ghost" id="layout-export-pdf-btn">Export PDF</button>
+            <button class="btn btn-ghost" id="layout-close-btn">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">S</span>Saved Layouts — Buyer-wise</div>
+      <div class="saved-toolbar no-print">
+        <div class="saved-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="layout-saved-search" placeholder="Search by Buyer or Style No...">
+        </div>
+      </div>
+      <div id="layout-saved-list-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ============ BUYER-WISE SAVED OB PANEL ============ -->
+  <div class="panel" id="panel-saved">
+    <div class="card">
+      <div class="card-title"><span class="num">S</span>Saved OB — Buyer-wise</div>
+      <div class="saved-toolbar no-print">
+        <div class="saved-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="saved-search" placeholder="Search by Buyer, Style No, or Description...">
+        </div>
+      </div>
+      <div id="saved-list-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ============ STYLES (GARMENT TYPE) DRILL-DOWN PANEL ============ -->
+  <div class="panel" id="panel-styles">
+    <div class="card">
+      <div class="card-title"><span class="num">S</span>Styles — by Garment Type</div>
+      <div class="saved-toolbar no-print">
+        <div class="saved-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="styles-search" placeholder="Search by Style No, Buyer, or Description...">
+        </div>
+      </div>
+      <div id="styles-list-wrap"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-users">
+    <div class="card">
+      <div class="card-title"><span class="num">U</span>Manage Users</div>
+
+      <div class="user-form">
+        <div class="user-edit-banner" id="user-edit-banner" style="display:none;">Editing <strong id="user-edit-name"></strong> — change access below and save.</div>
+
+        <div class="field"><label>Username</label><input id="user-username" type="text" placeholder="e.g. cutting_incharge"></div>
+        <div class="field" id="user-password-field"><label>Password</label><input id="user-password" type="password" placeholder="Set a password"></div>
+
+        <label class="chk-row user-admin-row"><input type="checkbox" id="user-admin"> <span>Admin (full access to every menu)</span></label>
+
+        <div class="user-perm-label">Menu Access</div>
+        <div class="user-perm-grid" id="user-menu-grid">
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="dashboard"> <span>Dashboard</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="costsheet"> <span>New Style / Operations</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="master"> <span>Master Data</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="layout"> <span>Layout</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="saved"> <span>Buyer wise OB Saved</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="styles"> <span>Styles</span></label>
+        </div>
+        <div class="user-perm-note">Manage Users is available to Admin accounts only.</div>
+
+        <div class="user-perm-label">Master Data Permissions</div>
+        <div class="user-perm-grid">
+          <label class="chk-row"><input type="checkbox" id="user-perm-smv"> <span>Change SMV</span></label>
+          <label class="chk-row"><input type="checkbox" id="user-perm-delete"> <span>Delete Operations</span></label>
+          <label class="chk-row"><input type="checkbox" id="user-perm-create"> <span>Operation Creation</span></label>
+        </div>
+
+        <div class="user-form-btn-row">
+          <button class="btn btn-primary" id="user-create-btn">+ Create User</button>
+          <button class="btn btn-ghost" id="user-edit-cancel" style="display:none;">Cancel Edit</button>
+        </div>
+      </div>
+
+      <div class="user-list-label" id="user-list-label">Users (0)</div>
+      <div id="user-list-wrap"></div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="lightbox-backdrop no-print" id="lightbox-backdrop" style="display:none;">
+  <button class="lightbox-close" id="lightbox-close" title="Close">&times;</button>
+  <img id="lightbox-img" src="" alt="Garment sketch preview">
+</div>
+<script>
+const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "mc": "O/L", "smv": 0.38}, {"op": "SHOULDER JOIN DOWN SHOULDER & LOADING", "mc": "O/L", "smv": 0.42}, {"op": "SHOULDER TOPSTICH & CUT", "mc": "F/L", "smv": 0.3}, {"op": "SHOULDER TOPSTICH DOWN SHOULDER  & CUT", "mc": "F/L", "smv": 0.35}, {"op": "NECK RIB MAKE", "mc": "SNLS", "smv": 0.15}, {"op": "NECK RIB RUN STICH", "mc": "O/L", "smv": 0.2}, {"op": "NECK RIB ATTACH AUTO M/C", "mc": "O/L", "smv": 0.32}, {"op": "BACK NECK BINDING & CUT", "mc": "F/L", "smv": 0.3}, {"op": "BACK NECK BINDING TACK AT ENDS AND CUT", "mc": "SNLS", "smv": 0.3}, {"op": "BACK NECK BINDING CLOSE", "mc": "SNLS", "smv": 0.28}, {"op": "BACK NECK SH TO SH BINDING & CUT", "mc": "F/L", "smv": 0.55}, {"op": "FRONT NECK TOPSTICH", "mc": "F/L", "smv": 0.28}, {"op": "SECURE TACK ON NECK TOPSTICH", "mc": "SNLS", "smv": 0.2}, {"op": "SLEEVE SET FOR NUMBER MATCHING", "mc": "H/P", "smv": 0.25}, {"op": "ATTACH SLEEVES", "mc": "O/L", "smv": 0.6}, {"op": "TOPSTICH ON SLEEVE SEAM", "mc": "F/L", "smv": 0.55}, {"op": "JOIN SDIE SEAM SS", "mc": "O/L", "smv": 0.65}, {"op": "JOIN SIDE SEAM LS", "mc": "O/L", "smv": 0.8}, {"op": "HEM SLEEVES", "mc": "F/L", "smv": 0.5}, {"op": "HEM BOTTOM", "mc": "F/L", "smv": 0.33}, {"op": "HEM BOTTOM APPEL CUT", "mc": "F/L", "smv": 0.5}, {"op": "HEM BOTTOM WITH SLIT", "mc": "F/L", "smv": 0.45}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "HEAT SEAL ON BACK NECK", "mc": "H/T", "smv": 0.35}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.3}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.3}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 0.55}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 0.7}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE GUN", "mc": "PACK", "smv": 0.15}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.2}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.4}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "POLO T-SHIRT": [{"op": "PLACKET MAKE AND ATTACH", "mc": "", "smv": 0}, {"op": "PLACKET FOAM FUSING", "mc": "H/P", "smv": 0.2}, {"op": "PLACKET ATTACH & CUT  AUTO M/C", "mc": "AUTO PLKT", "smv": 0.5}, {"op": "PLACKET CLOSE UPPER SIDE", "mc": "SNLS", "smv": 0.35}, {"op": "PLACKET CLOSE DOWN SIDE", "mc": "SNLS", "smv": 0.35}, {"op": "PLACKET EDEGE STICH", "mc": "SNLS", "smv": 0.45}, {"op": "PLACKET END BOX", "mc": "B/T", "smv": 0.28}, {"op": "PLACKET END THREAD TACK", "mc": "SNLS", "smv": 0.25}, {"op": "ASSAMBELY", "mc": "", "smv": 0}, {"op": "SHOULDER JOIN & LOADING", "mc": "O/L", "smv": 0.38}, {"op": "SHOULDER TOPSTICH & CUT", "mc": "F/L", "smv": 0.3}, {"op": "COLLAER AND SLEEVE RIB SIZING", "mc": "O/L", "smv": 0.35}, {"op": "COLLAR ATTACH WITH NECK BINDING & CUT", "mc": "O/L", "smv": 0.5}, {"op": "MAIN LABEL MARKING", "mc": "H/P", "smv": 0.15}, {"op": "BACK NECK BINDING CLOSE WITH LABEL NECK TO NECK", "mc": "SNLS", "smv": 0.4}, {"op": "SLEEVE SET FOR NUMBER MATCHING", "mc": "H/P", "smv": 0.25}, {"op": "SLEEVE RIB ATTACH", "mc": "O/L", "smv": 0.42}, {"op": "SLEEVE RIB TOSPTICH", "mc": "F/L", "smv": 0.38}, {"op": "ATTACH SLEEVES", "mc": "O/L", "smv": 0.6}, {"op": "TOPSTICH ON SLEEVE", "mc": "F/L", "smv": 0.55}, {"op": "JOIN SIDE SEAM WITH SLIT SERGING", "mc": "O/L", "smv": 0.75}, {"op": "SLEEVE RIB END TACK", "mc": "SNLS", "smv": 0.5}, {"op": "HEM BOTTOM SEPERAT & CUT", "mc": "F/L", "smv": 0.45}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "BOTTOM SLIT MAKE AND CLOSE", "mc": "", "smv": 0}, {"op": "SIDE VENT TACK", "mc": "SNLS", "smv": 0.3}, {"op": "SLIT VENT CLOSE", "mc": "SNLS", "smv": 0.75}, {"op": "SLIT VENT BARTACK", "mc": "B/T", "smv": 0.3}, {"op": "BUTTON & BUTTON HOLE", "mc": "", "smv": 0}, {"op": "BUTTON HOLE", "mc": "B/H", "smv": 0.3}, {"op": "BUTTON ATTACH  WITH EXRA ONE BUTTON", "mc": "B/A", "smv": 0.32}, {"op": "BUTTON CLOSE", "mc": "H/P", "smv": 0.2}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.3}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.35}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 0.75}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 0.85}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.4}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "HOODIE": [{"op": "HOOD MAKING", "mc": "", "smv": 0}, {"op": "JOIN HOOD INNER 2 PCS", "mc": "O/L", "smv": 0.25}, {"op": "TOPSTICH ON HOOD 2 PCS", "mc": "F/L", "smv": 0.2}, {"op": "JOIN HOOD OUTER 2 PCS", "mc": "O/L", "smv": 0.25}, {"op": "TOPSTICH ON HOOD 2 PCS", "mc": "F/L", "smv": 0.2}, {"op": "JOIN HOOD INNER 3 PCS", "mc": "O/L", "smv": 0.42}, {"op": "TOPSTICH ON HOOD 3 PCS", "mc": "F/L", "smv": 0.4}, {"op": "JOIN HOOD OUTER 3 PCS", "mc": "O/L", "smv": 0.42}, {"op": "TOPSTICH ON HOOD 3 PCS", "mc": "F/L", "smv": 0.4}, {"op": "INNER OUTER JOIN 2 PCS", "mc": "O/L", "smv": 0.25}, {"op": "INNER OUTER JOIN 3 PCS", "mc": "O/L", "smv": 0.3}, {"op": "HOOD CENTER TACK  1 NOS", "mc": "SNLS", "smv": 0.25}, {"op": "HOOD CENTER TACK  2 NOS", "mc": "SNLS", "smv": 0.33}, {"op": "HOOD HEM", "mc": "SNLS", "smv": 0.45}, {"op": "HOOD FRONT TACK AND DUMY STICH", "mc": "SNLS", "smv": 0.38}, {"op": "BUTTON HOLE MARK & HOLE", "mc": "B/H", "smv": 0.15}, {"op": "KANGAROO POCKET", "mc": "", "smv": 0}, {"op": "POCKET HEM", "mc": "F/L", "smv": 0.35}, {"op": "POCKET MARKING", "mc": "H/P", "smv": 0.3}, {"op": "POCKET ATTACH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET TOPSTICH", "mc": "SNLS", "smv": 0.55}, {"op": "POCKET BOTTOM TACK", "mc": "SNLS", "smv": 0.2}, {"op": "POCKET BARTACK", "mc": "B/T", "smv": 0.45}, {"op": "ASSAMBELY", "mc": "", "smv": 0}, {"op": "SHOULDER JOIN & LOADING", "mc": "O/L", "smv": 0.42}, {"op": "SHOULDER TOPSTICH & CUT", "mc": "F/L", "smv": 0.35}, {"op": "SLEEVE SET FOR NUMBER MATCHING", "mc": "H/P", "smv": 0.25}, {"op": "ATTACH SLEEVES", "mc": "O/L", "smv": 0.8}, {"op": "TOPSTICH ON SLEEVE", "mc": "F/L", "smv": 0.65}, {"op": "JOIN SIDE SEAM LS", "mc": "O/L", "smv": 0.85}, {"op": "SLEEVE CUFF RIB MAKE & TRUN", "mc": "SNLS", "smv": 0.48}, {"op": "SLEEEVE CUFF RIB  ATTACH", "mc": "O/L", "smv": 0.55}, {"op": "TOPSTICH ON SLEEVE CUFF RIB", "mc": "F/L", "smv": 0.5}, {"op": "BOTTOM RIB MAKE AND FOLD TACK", "mc": "SNLS", "smv": 0.3}, {"op": "BOTTOM RIB ATTACH", "mc": "O/L", "smv": 0.33}, {"op": "TOPSTICH ON BOTTOM RIB", "mc": "F/L", "smv": 0.65}, {"op": "HOOD ATTACH", "mc": "O/L", "smv": 0.57}, {"op": "BACK NECK BINDING ATTACH & CUT", "mc": "F/L", "smv": 0.3}, {"op": "BACK NECK BINDING TACK AT ENDS", "mc": "SNLS", "smv": 0.3}, {"op": "BACK NECK BINDING CLOSE", "mc": "SNLS", "smv": 0.28}, {"op": "FRONT NECK TOPSTICH", "mc": "F/L", "smv": 0.32}, {"op": "SECURE TACK ON NECK TOPSTICH", "mc": "SNLS", "smv": 0.2}, {"op": "ROPE INSERT", "mc": "H/P", "smv": 0.26}, {"op": "ROPE CENTER TACK", "mc": "SNLS", "smv": 0.23}, {"op": "ROPE END FOLD & TACK", "mc": "SNLS", "smv": 0.58}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.5}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.75}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 0.85}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 1.1}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.55}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "JOGGER PANT": [{"op": "JOIN FRONT RISE", "mc": "O/L", "smv": 0.28}, {"op": "TOPSTICH ON FRONT RISE", "mc": "F/L", "smv": 0.25}, {"op": "JOIN BACK RISE", "mc": "O/L", "smv": 0.33}, {"op": "TOSPTICH ON BACK RISE", "mc": "F/L", "smv": 0.28}, {"op": "SIDE SEAM NORMAL POCKET", "mc": "", "smv": 0}, {"op": "POCKET BAG SERGING", "mc": "O/L", "smv": 0.6}, {"op": "POCKET BAG ATTACH & CUT NOTCH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET BAG EDEGE STICH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG MOUTH TOPSTICH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET BAG TACK SIDE SEAM & WAIST", "mc": "SNLS", "smv": 0.65}, {"op": "POCKET BARTACK", "mc": "B/T", "smv": 0.45}, {"op": "BACK SIDE PANEL TACK ON SIDE SEAM", "mc": "SNLS", "smv": 0.65}, {"op": "INLINE CHECK POINT FOR POCKET", "mc": "QC", "smv": 0.25}, {"op": "ASSAMBELY", "mc": "", "smv": 0}, {"op": "JOIN SIDE SEAM", "mc": "O/L", "smv": 0.85}, {"op": "TOPSTICH ON SIDE SEAM", "mc": "F/L", "smv": 0.75}, {"op": "INSEAM JOIN", "mc": "O/L", "smv": 0.65}, {"op": "INSEAM BARTACK", "mc": "B/T", "smv": 0.2}, {"op": "LEG CUFF MAKE AND TRUN", "mc": "SNLS", "smv": 0.5}, {"op": "LEG CUFF ATTACH", "mc": "O/L", "smv": 0.65}, {"op": "LEF CUFF TOPSTICH", "mc": "F/L", "smv": 0.55}, {"op": "WAISTBAND MAKE AND ATTACH", "mc": "", "smv": 0}, {"op": "WAIST MARK & BUTTON HOLE  UNDER FOAM", "mc": "B/H", "smv": 0.3}, {"op": "JOIN WAISTBAND", "mc": "SNLS", "smv": 0.22}, {"op": "WAIST ELASTIC CUT AND MAKE", "mc": "SNLS", "smv": 0.3}, {"op": "ELASTIC TACK TO WAISTBAND 2 SIDE", "mc": "SNLS", "smv": 0.35}, {"op": "WAISTBAND RUN STICH", "mc": "O/L", "smv": 0.24}, {"op": "WAISTBAND TUNEL TOPSTICH & CUT", "mc": "M/N", "smv": 0.45}, {"op": "WAISTBAND TACK GARMENT  2 SIDE", "mc": "SNLS", "smv": 0.4}, {"op": "WAISTBAND ATTACH", "mc": "O/L", "smv": 0.6}, {"op": "ROPE MESURE AND CUT", "mc": "H/P", "smv": 0.2}, {"op": "ROPE INSERT", "mc": "H/P", "smv": 0.43}, {"op": "ROPE CENTER TACK", "mc": "SNLS", "smv": 0.25}, {"op": "ROPE END FOLD & TACK", "mc": "SNLS", "smv": 0.58}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "CHECKING & TRIMMING]", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.45}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.75}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 0.85}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 1.1}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.55}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "JACKET H.NECK": [{"op": "SIDE SEAM NORMAL POCKET", "mc": "", "smv": 0}, {"op": "POCKET BAG SERGING", "mc": "O/L", "smv": 0.6}, {"op": "POCKET BAG ATTACH & CUT NOTCH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET BAG EDEGE STICH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG MOUTH TOPSTICH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET BAG TACK SIDE SEAM & WAIST", "mc": "SNLS", "smv": 0.65}, {"op": "POCKET BARTACK", "mc": "B/T", "smv": 0.45}, {"op": "BACK SIDE PANEL TACK ON SIDE SEAM", "mc": "SNLS", "smv": 0.65}, {"op": "INLINE CHECK POINT FOR POCKET", "mc": "QC", "smv": 0.25}, {"op": "ASSEMBLY", "mc": "", "smv": 0}, {"op": "SHOULDER JOIN & LOADING", "mc": "O/L", "smv": 0.42}, {"op": "SHOULDER TOPSTICH & CUT", "mc": "F/L", "smv": 0.35}, {"op": "SLEEVE SET FOR NUMBER MATCHING", "mc": "H/P", "smv": 0.25}, {"op": "ATTACH SLEEVES", "mc": "O/L", "smv": 0.8}, {"op": "TOPSTICH ON SLEEVE", "mc": "F/L", "smv": 0.65}, {"op": "JOIN SIDE SEAM LS", "mc": "O/L", "smv": 0.85}, {"op": "SLEEVE CUFF RIB MAKE & TRUN", "mc": "SNLS", "smv": 0.48}, {"op": "SLEEEVE CUFF RIB  ATTACH", "mc": "O/L", "smv": 0.55}, {"op": "TOPSTICH ON SLEEVE CUFF RIB", "mc": "F/L", "smv": 0.5}, {"op": "BOTTOM RIB MAKE AND FOLD TACK", "mc": "SNLS", "smv": 0.3}, {"op": "BOTTOM RIB ATTACH", "mc": "O/L", "smv": 0.65}, {"op": "TOPSTICH ON BOTTOM RIB", "mc": "F/L", "smv": 0.55}, {"op": "H.NECK COLLAR & ZIPPER MAKE & ATTACH", "mc": "", "smv": 0}, {"op": "JOIN COLLAR EDEG TO EDEG TOP", "mc": "O/L", "smv": 0.28}, {"op": "COLLAR EDEG STICH", "mc": "SNLS", "smv": 0.25}, {"op": "COLLAR ATTACH", "mc": "O/L", "smv": 0.5}, {"op": "HALF FLAP MAKE AND TRUN AND TOSPTICH", "mc": "SNLS", "smv": 0.7}, {"op": "HALF FLAP EDEGE SERGING", "mc": "O/L", "smv": 0.2}, {"op": "HALF FLAP ATTACH TO ZIPPER", "mc": "SNLS", "smv": 0.3}, {"op": "HALF ZIPPER BINDING & CUT", "mc": "F/L", "smv": 0.33}, {"op": "HALF ZIPPER BINDING END FOLD TACK", "mc": "SNLS", "smv": 0.25}, {"op": "HALF FRONT ZIPPER SDIE SERGING", "mc": "O/L", "smv": 0.45}, {"op": "HALF ZIPPER END TACK", "mc": "SNLS", "smv": 0.23}, {"op": "HALF ZIPPER MARK AND ATTACH", "mc": "SNLS", "smv": 0.55}, {"op": "FULL FLAP MAKE AND TRUN AND TOSPTICH", "mc": "SNLS", "smv": 0.8}, {"op": "FULL FLAP EDEGE SERGING", "mc": "O/L", "smv": 0.3}, {"op": "FULL FLAP ATTACH TO ZIPPER", "mc": "SNLS", "smv": 0.4}, {"op": "FULL ZIPPER BINDING & CUT", "mc": "SNLS", "smv": 0.38}, {"op": "FULL FRONT ZIPPER SDIE SERGING", "mc": "O/L", "smv": 0.55}, {"op": "FULL ZIPPER MARK AND ATTACH", "mc": "SNLS", "smv": 0.95}, {"op": "COLLAR FOLD AND TACK", "mc": "SNLS", "smv": 0.45}, {"op": "BACK NECK BINDING ATTACH & CUT NECK TO NECK", "mc": "F/L", "smv": 0.45}, {"op": "BACK NECK BINDING CLOSE", "mc": "SNLS", "smv": 0.55}, {"op": "HALF ZIPPER TOPSTICH", "mc": "SNLS", "smv": 0.75}, {"op": "FULL ZIPER TOPSTICH", "mc": "SNLS", "smv": 0.75}, {"op": "INLINE CHECK POINT FOR ZIPPER", "mc": "QC", "smv": 0.25}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.4}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.5}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.8}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 0.95}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 1.1}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.55}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "SHIRT L & S SLEEVE": [{"op": "COLLAR MAKE", "mc": "", "smv": 0}, {"op": "COLLAR & COLLAR STAND FOAM FUSING", "mc": "H/P", "smv": 0.25}, {"op": "COLLAR MARK", "mc": "H/P", "smv": 0.15}, {"op": "COLLAR RUN STICH WITH THREAD", "mc": "SNLS", "smv": 0.7}, {"op": "COLLAR TRUN & POINT OUT EDEGE", "mc": "H/P", "smv": 0.2}, {"op": "COLLAR TRIM AND NOTCH", "mc": "H/P", "smv": 0.25}, {"op": "COLLAR TOPSTICH", "mc": "SNLS", "smv": 0.43}, {"op": "COLLAR STAND ATTACH TO COLLAR", "mc": "SNLS", "smv": 0.65}, {"op": "COLLAR STAND HEM", "mc": "SNLS", "smv": 0.25}, {"op": "COLLAR STAND TOPSTICH", "mc": "SNLS", "smv": 0.35}, {"op": "COLLAR IRONING", "mc": "H/P", "smv": 0.2}, {"op": "FRONT PLACKET ATTACH", "mc": "", "smv": 0}, {"op": "BUTTON PLACKET FOAM IRONING", "mc": "H/P", "smv": 0.25}, {"op": "BUTTON HOLE PLACKET FOAM IRONING", "mc": "H/P", "smv": 0.25}, {"op": "BUTTON HOLE PLACKET BINDING ATTACH", "mc": "M/N", "smv": 0.6}, {"op": "DOWN PLACKET HEM USING FOLDER", "mc": "SNLS", "smv": 0.6}, {"op": "FRONT V PATCH POCKET ATTACH", "mc": "", "smv": 0}, {"op": "POCKET HEM", "mc": "SNLS", "smv": 0.2}, {"op": "POCKET IRONING", "mc": "H/P", "smv": 0.45}, {"op": "POCCKET MARKING", "mc": "H/P", "smv": 0.3}, {"op": "POCKET ATTACH SHAPE DOWN SDIE", "mc": "SNLS", "smv": 0.7}, {"op": "ASSEMBLY", "mc": "", "smv": 0}, {"op": "BACK YOUK ATTACH", "mc": "O/L", "smv": 0.35}, {"op": "BACK YOUK TOPSTICH", "mc": "SNLS", "smv": 0.3}, {"op": "BACK YOUK PLEET MARKING", "mc": "H/P", "smv": 0.2}, {"op": "BACK YOUK PLEET TACKING", "mc": "SNLS", "smv": 0.35}, {"op": "LOADING FRONT AND BACK", "mc": "H/P", "smv": 0.25}, {"op": "SHOULDER JOIN", "mc": "O/L", "smv": 0.4}, {"op": "SHOULDER TOPSTICH AND CUT", "mc": "SNLS", "smv": 0.4}, {"op": "SLEEVE SET FOR NUMBER MATCHING", "mc": "H/P", "smv": 0.3}, {"op": "SLEEVE ATTACH", "mc": "O/L", "smv": 0.78}, {"op": "SLEEVE TOPSTICH", "mc": "F/L", "smv": 0.65}, {"op": "SIDE SEAM  LS", "mc": "O/L", "smv": 1.0}, {"op": "SIDE SEAM  LS", "mc": "FOA", "smv": 1.2}, {"op": "SIDE SEAM  SS", "mc": "O/L", "smv": 0.85}, {"op": "TOPSTICH ON SDIE SEAM SS", "mc": "V/T", "smv": 1.0}, {"op": "TOPSTICH ON SDIE SEAM LS", "mc": "V/T", "smv": 0.8}, {"op": "MAIN LABEL MARK", "mc": "H/P", "smv": 0.2}, {"op": "MAIN LABEL ATTACH  PATCH", "mc": "SNLS", "smv": 0.35}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.35}, {"op": "MAIN LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.35}, {"op": "COLLAR ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "COLLAR CLOSE", "mc": "SNLS", "smv": 0.7}, {"op": "BOTTOM HEM  USING FOLDER", "mc": "SNLS", "smv": 0.85}, {"op": "SLEEVE HEM  SS", "mc": "SNLS", "smv": 0.85}, {"op": "CUFF MAKE & ATTACH", "mc": "", "smv": 0}, {"op": "SLEEVE CUFF HEM", "mc": "SNLS", "smv": 0.3}, {"op": "SLEEVE CUFF JOIN", "mc": "SNLS", "smv": 0.8}, {"op": "SLEEVE CUFF TURN POINT OUT EDEGE", "mc": "H/P", "smv": 0.3}, {"op": "SLEEVE CUFF TOPSTICH", "mc": "SNLS", "smv": 0.7}, {"op": "SLEEVE CUFF IRONING", "mc": "H/P", "smv": 0.3}, {"op": "SLEEVE PLACKET FUSING & IRONING", "mc": "H/P", "smv": 0.55}, {"op": "SLEEVE PLACKET ATTACH L& R", "mc": "SNLS", "smv": 0.82}, {"op": "SLEEVE PIPING PLACKET CLOSE", "mc": "SNLS", "smv": 0.65}, {"op": "SLEEVE  PLACKET CLOSE DIMOND SHAPE", "mc": "SNLS", "smv": 1.2}, {"op": "SLEEVE CUFF PLEET  TACK 2 NOS", "mc": "SNLS", "smv": 0.35}, {"op": "SLEEVE CUFF ATTACH & CLOSE USING GUIDE", "mc": "SNLS", "smv": 0.85}, {"op": "CHECK POINT FOR SLEEVE PLACKET", "mc": "QC", "smv": 0.3}, {"op": "BUTTON HOLE & BUTTON ATTACH", "mc": "", "smv": 0}, {"op": "SLEEVE BUTTON HOLE  WITH MARK", "mc": "B/H", "smv": 0.3}, {"op": "SLEEVE BUTTON ATTACH WITH MARK", "mc": "B/A", "smv": 0.3}, {"op": "BUTTON AND BUTTON HOLE MARKING", "mc": "H/P", "smv": 0.55}, {"op": "BUTTON HOLE  8 NOS", "mc": "B/H", "smv": 0.85}, {"op": "BUTTON ATTACH  8 NOS", "mc": "B/A", "smv": 0.85}, {"op": "BUTTON INSERT 8 NOS", "mc": "H/P", "smv": 0.5}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "TRUN GARMENT & SITICKER REMOVE", "mc": "H/P", "smv": 0.7}, {"op": "THREAD TRIMING", "mc": "H/P", "smv": 0.85}, {"op": "FINAL CHECKING", "mc": "QC", "smv": 1.2}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 1.4}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.55}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "DENIM PANT": [{"op": "FRONT FLY ATTACH", "mc": "", "smv": 0}, {"op": "FRONT FLY FUSING", "mc": "H/P", "smv": 0.2}, {"op": "BOX FLY & J FLY SERGING", "mc": "O/L", "smv": 0.3}, {"op": "BOX FLY FOLDING", "mc": "F/L", "smv": 0.25}, {"op": "ZIPPER ATTACH ON J FLY", "mc": "SNLS", "smv": 0.3}, {"op": "ZIPPER FLY ATTACH ON FRONT SDIE", "mc": "SNLS", "smv": 0.3}, {"op": "ZIPPER FLY TOPSTICH", "mc": "SNLS", "smv": 0.2}, {"op": "FRONT J STICH MARK AND SEW", "mc": "SNLS", "smv": 0.45}, {"op": "BOX FLY ATTACH", "mc": "SNLS", "smv": 0.25}, {"op": "FRONT RISE SERGING", "mc": "O/L", "smv": 0.3}, {"op": "JOIN LEFT PANELFOLD TO RIGHT PANEL", "mc": "SNLS", "smv": 0.35}, {"op": "CROUCH TOPSTICH", "mc": "DNLS", "smv": 0.3}, {"op": "FRONT CURVE POCKET ATTACH", "mc": "", "smv": 0}, {"op": "COIN POCKET HEM", "mc": "DNLS", "smv": 0.2}, {"op": "COIN POCKET MARK", "mc": "H/P", "smv": 0.2}, {"op": "SIDE POCKET PLACEMENT MARK", "mc": "H/P", "smv": 0.3}, {"op": "COIN POCKET ATTACH", "mc": "DNLS", "smv": 0.32}, {"op": "FRONT POCKET FACING SERG", "mc": "O/L", "smv": 0.3}, {"op": "FRONT POCKET FACING ATTACH TO POCKET BAG", "mc": "F/L", "smv": 0.4}, {"op": "POCKET ATTACH ON FRONT PANEL", "mc": "DNLS", "smv": 0.75}, {"op": "POCKET BAG SERGING", "mc": "O/L", "smv": 0.4}, {"op": "POCKET BAG SERGING AFTER TOPSTICH", "mc": "SNLS", "smv": 0.4}, {"op": "POCKET TACK ON TOP AND BOTTOM", "mc": "SNLS", "smv": 0.3}, {"op": "COIN POCKET BARTACK & J BARTACK", "mc": "B/T", "smv": 0.3}, {"op": "FRONT POCKET SNAP ATTACH 4 NOS", "mc": "SNAP", "smv": 0.35}, {"op": "FRONT AND COIN POCKET BARTACK 6 NOS", "mc": "B/T", "smv": 0.4}, {"op": "BACK POCKET ATTACH", "mc": "", "smv": 0}, {"op": "BACK YOKE ATTACH", "mc": "FOA", "smv": 0.38}, {"op": "JOIN BACK RISE", "mc": "O/L", "smv": 0.32}, {"op": "BACK RISE TOPSTICH", "mc": "F/L", "smv": 0.28}, {"op": "BACK POCKET MARKING", "mc": "H/P", "smv": 0.35}, {"op": "BACK POCKET HEM", "mc": "SNLS", "smv": 0.32}, {"op": "BACK POCKET ATTACH", "mc": "DNLS", "smv": 1.0}, {"op": "POCKET BARTACK", "mc": "B/T", "smv": 0.35}, {"op": "ASSEMBLY", "mc": "", "smv": 0}, {"op": "LOADING FRONT AND BACK", "mc": "H/P", "smv": 0.25}, {"op": "JOIN SIDE SEAM", "mc": "O/L", "smv": 0.8}, {"op": "SIDE SEAM TOPSTICH UNDER POCKET", "mc": "SNLS", "smv": 0.6}, {"op": "SIDE SEAM TOPSTICH FULL LENGTH", "mc": "F/L", "smv": 0.85}, {"op": "JOIN INSEAM", "mc": "O/L", "smv": 0.6}, {"op": "JOIN INSEAM", "mc": "FOA", "smv": 0.75}, {"op": "INSEAM TOPSTICH", "mc": "F/L", "smv": 0.65}, {"op": "LEG HEM", "mc": "SNLS", "smv": 0.8}, {"op": "WASIT BAND ATTACH", "mc": "", "smv": 0}, {"op": "WASIT BAND FUSING", "mc": "H/P", "smv": 0.25}, {"op": "WASIT BAND MARK", "mc": "H/P", "smv": 0.3}, {"op": "WASIT BAND ATTACH BY M/N", "mc": "M/N", "smv": 0.55}, {"op": "WASIT BAND EDEGE CLOSE", "mc": "SNLS", "smv": 0.55}, {"op": "LOOP MARK", "mc": "H/P", "smv": 0.3}, {"op": "LOOP MAKE AND ROLL WINDING", "mc": "F/L", "smv": 0.3}, {"op": "LOOP ATTACH", "mc": "AUTO LOOP", "smv": 0.55}, {"op": "LOOP CUT EXTRA", "mc": "H/P", "smv": 0.3}, {"op": "KEY HOLE", "mc": "B/H", "smv": 0.3}, {"op": "BUTTON ATTACH", "mc": "SNAP", "smv": 0.3}, {"op": "WASHER LABEL MAKE AND ATTACH", "mc": "SNLS", "smv": 0.3}, {"op": "MAIN LABEL ATTACH PATCH", "mc": "P/S", "smv": 0.35}, {"op": "JOOGER TAG", "mc": "JOG", "smv": 0.25}, {"op": "CHECK POINT FOR FRONT & BACK POCKET", "mc": "QC", "smv": 0.65}, {"op": "HEAT SEEL OR PATCH LABEL ATTACH", "mc": "H/T", "smv": 0.4}, {"op": "CHECKING & TRIMMING", "mc": "", "smv": 0}, {"op": "REMOVE STICKER TURN GARMENT", "mc": "H/P", "smv": 0.5}, {"op": "TRIM THREADS", "mc": "H/P", "smv": 0.5}, {"op": "ENDLINE QC", "mc": "QC", "smv": 0.85}, {"op": "PACKING", "mc": "", "smv": 0}, {"op": "DUST REMOVE", "mc": "H/P", "smv": 0.3}, {"op": "IRON GARMENT", "mc": "IRON", "smv": 1.1}, {"op": "SIZE SEPERAT", "mc": "PACK", "smv": 0.125}, {"op": "BARCODE STICKER ON HANG TAG", "mc": "PACK", "smv": 0.0646}, {"op": "HANG TAG USE HAND TIE", "mc": "PACK", "smv": 0.2}, {"op": "ASORT MAKING", "mc": "PACK", "smv": 0.21}, {"op": "GARMENT FOLDING & GARMENT INSERT TO POLY BAG", "mc": "PACK", "smv": 0.55}, {"op": "POLYBAG STICKER", "mc": "PACK", "smv": 0.0742}, {"op": "METAL DETECTION", "mc": "PACK", "smv": 0.14}, {"op": "COTTON BOX MAKE AND CLOSE 25 PCS & LOADING& BOX STICHER 10 NOS", "mc": "PACK", "smv": 0.25}], "COLLAR": [{"op": "1ST SHOULDER JOIN", "mc": "O/L", "smv": 0.25}, {"op": "COLLAR PIPING FULL ROUND BY O/L & CUT", "mc": "O/L", "smv": 0.48}, {"op": "COLLAR PIPING FULL ROUND BY F/L & CUT", "mc": "F/L", "smv": 0.45}, {"op": "2ND SHOULDER BEFORE TACK", "mc": "SNLS", "smv": 0.25}, {"op": "2ND SHOULDER JOIN", "mc": "O/L", "smv": 0.25}, {"op": "2ND SHOULDER TACK", "mc": "SNLS", "smv": 0.3}, {"op": "INOUT OPEN EDEGE COLLAR PIPING", "mc": "H/P", "smv": 0.42}, {"op": "COLLAR PIPING TACK & CUT EDEGE", "mc": "SNLS", "smv": 0.35}, {"op": "COLLAR PIPING CLOSE", "mc": "F/L OR O/L", "smv": 0.2}], "FRONT & BACK CUT & SEW": [{"op": "JOIN FRONT CUT & SEW 2 SIDE SEAM VERTICAL", "mc": "O/L", "smv": 0.7}, {"op": "TOPSTICH FRONT CUT & SEW 2 SIDE SEAM VERTICAL", "mc": "F/L", "smv": 0.6}, {"op": "JOIN BACK CUT & SEW 2 SIDE SEAM VERTICAL", "mc": "O/L", "smv": 0.7}, {"op": "TOPSTICH FRONT CUT & SEW 2 SIDE SEAM VERTICAL", "mc": "F/L", "smv": 0.6}], "BACK CUT AND SEW": [{"op": "JOIN BACK CUT & SEW TOP HORIZANTAL 1 NOS", "mc": "O/L", "smv": 0.38}, {"op": "TOPSTICH ON BACK CUT & SEW  1 NOS", "mc": "F/L", "smv": 0.35}, {"op": "JOIN BACK CUT & SEW CENTER VERTICAL FULL 1 NOS", "mc": "O/L", "smv": 0.42}, {"op": "TOPSTICH ON BACK CUT & SEW CENTER VERTICAL 1 NOS", "mc": "F/L", "smv": 0.38}], "LABELS": [{"op": "PATCH LABEL MARKING", "mc": "H/P", "smv": 0.18}, {"op": "PATCH LABEL ATTACH", "mc": "P/S", "smv": 0.3}], "J STICH": [{"op": "J CENTER TACK AFTER JOIN RISE", "mc": "SNLS", "smv": 0.25}, {"op": "J STICH MARK AND SEW", "mc": "SNLS", "smv": 0.42}, {"op": "J BARTACK", "mc": "B/T", "smv": 0.2}], "BTM VENT": [{"op": "SDIE VENT TACKING", "mc": "SNLS", "smv": 0.3}, {"op": "SELF SIDE VENT CLOSEING SINGEL FOLD", "mc": "SNLS", "smv": 0.75}, {"op": "SELF SIDE VENT CLOSEING DOUBEL FOLD", "mc": "SNLS", "smv": 0.85}, {"op": "SDIE VENT TAPE CUT AND MAKE", "mc": "SNLS", "smv": 0.33}, {"op": "SIDE VENT TAPE ATTACH", "mc": "SNLS", "smv": 0.85}, {"op": "SIDE VENT TAPE CLOSE", "mc": "SNLS", "smv": 0.85}, {"op": "SIDE VENT FOLDING & CUT", "mc": "SNLS", "smv": 0.56}, {"op": "SIDE VENT FOLDING CLSOE", "mc": "SNLS", "smv": 0.75}, {"op": "SIDE VENT BARTACK", "mc": "B/T", "smv": 0.33}], "BACK NECK TAPE": [{"op": "BACK NECK TAPE ATTACH S TO S AND CUT", "mc": "SNLS", "smv": 0.5}, {"op": "BACK NECK TAPE CLOSE S TO S WITH LABEL", "mc": "SNLS", "smv": 0.55}, {"op": "BACK NECK TAPE ATTACH N TO N AND CUT", "mc": "F/L", "smv": 0.35}, {"op": "BACK NECK TAPE CLOSE N TO N", "mc": "SNLS", "smv": 0.3}], "SNAP BOTTON": [{"op": "SNAP BUTTON STUD ATTACH WITH MARKING 1 NOS", "mc": "SNAP", "smv": 0.2}, {"op": "SNAP BUTTON SCOKET ATTACH WITH MARKING 1 NOS", "mc": "SNAP", "smv": 0.2}, {"op": "WASIT BAND SNAP HOLE WITH MARKING 2 NOS", "mc": "H/P", "smv": 0.45}, {"op": "WASIT BAND SNAP ATTACH 2 NOS", "mc": "SNAP", "smv": 0.5}], "MID WELT PKT": [{"op": "WELT BONE FUSHING & IRONING", "mc": "HT", "smv": 0.3}, {"op": "POCKET MARKING", "mc": "H/P", "smv": 0.35}, {"op": "WELT BONE ATTACH AND CUT NOTCH (AUTO)", "mc": "WELT", "smv": 1.2}, {"op": "WELT END TACK", "mc": "SNLS", "smv": 0.9}, {"op": "UPSIDE POCKET BAG PANNEL ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "WELT UPSIDE TOPSTITCH", "mc": "SNLS", "smv": 0.5}, {"op": "DOWNSIDE POCKET BAG PANNEL ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "WELT DOWNSIDE  EDGE STITCH", "mc": "SNLS", "smv": 0.7}, {"op": "POCKET BAG SURGE", "mc": "O/L", "smv": 0.6}, {"op": "POCKET BAG TACK ON TOP & BTM", "mc": "SNLS", "smv": 0.6}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.55}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "BACK WELT W/O FACING": [{"op": "WELT POCKET MARKING", "mc": "H/P", "smv": 0.35}, {"op": "WELT BONE FUSHING & IRONING", "mc": "H/P", "smv": 0.3}, {"op": "WELT BONE ATTACH AND CUT NOTCH (AUTO)", "mc": "WELT", "smv": 1.2}, {"op": "WELT END TACK", "mc": "SNLS", "smv": 0.9}, {"op": "UPSIDE BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "UPSIDE BAG EDGE STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "DOWNSIDE BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "DOWNSIDE BAG T/S", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET BAG CLOSE", "mc": "O/L", "smv": 0.6}, {"op": "BARTACK ON POCKET", "mc": "B/T", "smv": 0.45}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.55}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "BACK WELT W FACING": [{"op": "WELT POCKET MARKING", "mc": "H/P", "smv": 0.35}, {"op": "POCKET FACING SERGING", "mc": "O/L", "smv": 0.2}, {"op": "WELT BONE FUSHING & IRONING", "mc": "H/P", "smv": 0.3}, {"op": "WELT BONE ATTACH AND CUT NOTCH (AUTO)", "mc": "WELT", "smv": 1.2}, {"op": "WELT END TACK", "mc": "SNLS", "smv": 0.9}, {"op": "UPSIDE BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "UPSIDE BAG EDGE STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "DOWNSIDE BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "DOWNSIDE BAG T/S", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET FACING ATTACH", "mc": "SNLS", "smv": 0.45}, {"op": "POCKET FACING CLOSE", "mc": "SNLS", "smv": 0.35}, {"op": "POCKET BAG CLOSE", "mc": "O/L", "smv": 0.6}, {"op": "BARTACK ON POCKET", "mc": "B/T", "smv": 0.45}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.55}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}, {"op": "ZIPPER ATTACH ON POCKET", "mc": "SNLS", "smv": 0.5}], "CARGO POCKET": [{"op": "POCKET MARKING", "mc": "H/P", "smv": 0.3}, {"op": "POCKET PLEAT MAKE", "mc": "SNLS", "smv": 0.5}, {"op": "PLEAT IRONING", "mc": "H/P", "smv": 0.3}, {"op": "POCKET HEM DOUBEL FOLD", "mc": "SNLS", "smv": 0.35}, {"op": "WELCRO MESURE & CUT (4 NOS)", "mc": "H/P", "smv": 0.47}, {"op": "WELCRO MARK", "mc": "H/P", "smv": 0.3}, {"op": "WELCRO ATTACH", "mc": "SNLS", "smv": 0.8}, {"op": "POCKET IRONING", "mc": "H/P", "smv": 0.6}, {"op": "POCKET ATTACH ON SDIE SEAM", "mc": "DNLS", "smv": 1.6}, {"op": "POCKET ATTACH ON BARTACK", "mc": "B/T", "smv": 0.45}, {"op": "WELCRO MARK", "mc": "H/P", "smv": 0.3}, {"op": "WELCRO ATTACH", "mc": "SNLS", "smv": 0.8}, {"op": "FLAP RUN STICH", "mc": "SNLS", "smv": 0.75}, {"op": "FLAP TURN AND TAKE NOSE POINT", "mc": "H/P", "smv": 0.4}, {"op": "FLAP TOPSTICH", "mc": "SNLS", "smv": 0.65}, {"op": "FLAP ATTACH & TOPSTICH", "mc": "SNLS", "smv": 0.65}, {"op": "FLAP ON BARTACK", "mc": "B/T", "smv": 0.45}], "THUMB HOLE": [{"op": "DOWNSIDE SMALL RIB  MAKE & TURN", "mc": "SNLS", "smv": 0.3}, {"op": "UPSIDE SMALL RIB  MAKE", "mc": "SNLS", "smv": 0.25}, {"op": "RIB MARKING", "mc": "H/P", "smv": 0.4}, {"op": "RIB MAKE", "mc": "SNLS", "smv": 0.8}], "SIDE POCKET": [{"op": "POCKET BAG SURGE", "mc": "O/L", "smv": 0.6}, {"op": "POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "CUT KNOTCH", "mc": "H/P", "smv": 0.25}, {"op": "POCKET BAG EDEGE STICH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET MOUTH STITCH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SIDE POCKET W FACING": [{"op": "FACING SURGE", "mc": "O/L", "smv": 0.25}, {"op": "FACING ATTACH", "mc": "SNLS", "smv": 0.6}, {"op": "POCKET BAG SURGE", "mc": "O/L", "smv": 0.6}, {"op": "POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "CUT KNOTCH", "mc": "H/P", "smv": 0.25}, {"op": "POCKET BAG EDEGE STICH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET MOUTH STITCH", "mc": "SNLS", "smv": 0.75}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SDIE WELT PKT": [{"op": "WELT FUSHING", "mc": "H/P", "smv": 0.2}, {"op": "WELT BONE ATTACH AND CUT NOTCH (AUTO)", "mc": "WELT", "smv": 0.75}, {"op": "MAKE KNOTCH", "mc": "H/P", "smv": 0.25}, {"op": "WELT END TACK", "mc": "SNLS", "smv": 0.55}, {"op": "UPSIDE POCKET BAG PANNEL ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "WELT UPSIDE EDGE STITCH", "mc": "SNLS", "smv": 0.75}, {"op": "DOWNSIDE POCKET BAG PANNEL TACK", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG TACK ON TOP & BTM", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG SURGE", "mc": "O/L", "smv": 0.6}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SDIE WELT PKT W FACING": [{"op": "POCKET FACING SURGE", "mc": "O/L", "smv": 0.2}, {"op": "POCKET FACING ATTACH", "mc": "SNLS", "smv": 0.6}, {"op": "WELT BONE FUSHING & IRONING", "mc": "H/P", "smv": 0.3}, {"op": "WELT BONE ATTACH AND CUT NOTCH (AUTO)", "mc": "WELT", "smv": 0.7}, {"op": "MAKE CUT AND NOTCH NOTCH AT EDEGE", "mc": "H/P", "smv": 0.25}, {"op": "WELT END TACK", "mc": "SNLS", "smv": 0.55}, {"op": "UPSIDE POCKET BAG PANNEL ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "WELT UPSIDE EDGE STITCH", "mc": "SNLS", "smv": 0.75}, {"op": "DOWNSIDE POCKET BAG PANNEL TACK", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG TACK ON TOP & BTM", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG SURGE", "mc": "O/L", "smv": 0.6}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SIDE SLAND POCKET": [{"op": "POCKET BAG SURGE", "mc": "H/P", "smv": 0.6}, {"op": "POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET EDGE STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET MOUTH STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.65}, {"op": "BARTACK", "mc": "SNLS", "smv": 0.45}], "SIDE SLAND PKT FACE": [{"op": "POCKET FACING SURGE", "mc": "4T O/L", "smv": 0.25}, {"op": "POCKET FACING ATTACH", "mc": "SNLS", "smv": 0.6}, {"op": "POCKET BAG SURGE", "mc": "H/P", "smv": 0.6}, {"op": "POCKET BAG ATTACH & CUT KNOTCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET EDGE STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET MOUTH STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET STAY STITCH", "mc": "SNLS", "smv": 0.65}, {"op": "BARTACK", "mc": "SNLS", "smv": 0.45}], "PATCH POCKET": [{"op": "POCKET BAG SURGING", "mc": "SNLS", "smv": 0.6}, {"op": "POCKET MARKING", "mc": "H/P", "smv": 0.35}, {"op": "POCKET MOUTH HEM STICH", "mc": "F/L", "smv": 0.55}, {"op": "POCKET BAG IRONING", "mc": "SNLS", "smv": 0.6}, {"op": "POCKET BAG ATTACH", "mc": "SNLS", "smv": 1.4}, {"op": "POCKET TOP STITCH", "mc": "F/L", "smv": 0.9}, {"op": "BARTACK", "mc": "B/T", "smv": 0.45}], "SIDE ZIPPER PKT": [{"op": "ZIPPER MARKING", "mc": "H/P", "smv": 0.3}, {"op": "ZIPPER END TACK", "mc": "SNLS", "smv": 0.6}, {"op": "CUT &  KNOTCH", "mc": "H/P", "smv": 0.3}, {"op": "ZIPPER ATTACH 2 SDIE", "mc": "SNLS", "smv": 0.85}, {"op": "UPSIDE POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "TOPSTICH ON ZIPPER SIDE", "mc": "SNLS", "smv": 0.75}, {"op": "DOWN SIDE BAG ATTACH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG TACK ON SIDE SEAM TOP & BTM", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SIDE ZIPPER PKT W FACE": [{"op": "POCKET FACING SURGE", "mc": "O/L", "smv": 0.2}, {"op": "POCKET FACING ATTACH", "mc": "SNLS", "smv": 0.6}, {"op": "ZIPPER MARKING", "mc": "H/P", "smv": 0.3}, {"op": "ZIPPER END TACK", "mc": "SNLS", "smv": 0.6}, {"op": "CUT &  KNOTCH", "mc": "H/P", "smv": 0.3}, {"op": "ZIPPER ATTACH 2 SDIE", "mc": "SNLS", "smv": 0.85}, {"op": "UPSIDE POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "TOPSTICH ON ZIPPER SIDE", "mc": "SNLS", "smv": 0.75}, {"op": "DOWN SIDE BAG ATTACH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET BAG TACK ON SIDE SEAM TOP & BTM", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SDIE ZIPPER PKT W FACE": [{"op": "POCKET FACING SURGE", "mc": "O/L", "smv": 0.2}, {"op": "POCKET FACING ATTACH TO BAG", "mc": "SNLS", "smv": 0.6}, {"op": "ZIPPER MARKING", "mc": "H/P", "smv": 0.25}, {"op": "ZIPPER END TACK", "mc": "SNLS", "smv": 0.75}, {"op": "CUT KNOTCH", "mc": "H/P", "smv": 0.3}, {"op": "ZIPPER ATTACH", "mc": "SNLS", "smv": 0.85}, {"op": "UPSIDE POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "UPSIDE POCKET BAG TOPSTICH", "mc": "SNLS", "smv": 0.5}, {"op": "DOWN SIDE POCKET BAG ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "DOWN SIDE POCKET BAG TOPSTICH", "mc": "SNLS", "smv": 0.7}, {"op": "POCKET BAG TACK ON TOP & BTM", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "SLAND PKT W ONE SIDE ZIPPER": [{"op": "HIDDEN ZIPPER MARKING", "mc": "H/P", "smv": 0.2}, {"op": "ZIPPER ATTACH & CUT KNOTCH (ONE SIDE)", "mc": "SNLS", "smv": 0.5}, {"op": "ZIPPER TACK ON TOP & BOTTOM", "mc": "SNLS", "smv": 0.35}, {"op": "ZIPPER TOPSTICH", "mc": "SNLS", "smv": 0.3}, {"op": "POCKET BAG SURGE", "mc": "4T O/L", "smv": 0.75}, {"op": "POCKET BAG  ATTACH", "mc": "SNLS", "smv": 0.65}, {"op": "CUT KNOTCH", "mc": "H/P", "smv": 0.3}, {"op": "POCKET EDGE STITCH", "mc": "SNLS", "smv": 0.5}, {"op": "POCKET MOUTH STITCH", "mc": "H/P", "smv": 0.55}, {"op": "POCKET STAY STITCH AT WAIST", "mc": "SNLS", "smv": 0.55}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "KANGAROO POCKET": [{"op": "POCKET MARKING", "mc": "H/P", "smv": 0.25}, {"op": "POCKET HEM AND CUT", "mc": "3T F/L", "smv": 0.3}, {"op": "POCKET ATTACH TOP SIDE  & SIDE FOLD ATTACH & BTM DUMMY TACK", "mc": "SNLS", "smv": 0.75}, {"op": "TOPSTICH ON TOPSIDE & 2 SIDES", "mc": "SNLS", "smv": 0.45}, {"op": "POCKET ON BARTACK", "mc": "B/T", "smv": 0.45}], "HANGER LOOP": [{"op": "HANGER LOOP CUT AND MAKE", "mc": "SNLS", "smv": 0.2}, {"op": "HANGER LOOP ATTACH ON SHOULDER", "mc": "SNLS", "smv": 0.48}]}
+;
+</script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  let masterData = JSON.parse(JSON.stringify(SEED_MASTER_DATA)); // {style: [{op,mc,smv}]}
+  let masterImages = {}; // {style: dataUrl} - reference image shown beside each style's operations in Master Data
+  let appUsers = [
+    {username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true}
+  ]; // [{username, password, admin, menus:[...], permSmv, permDelete}]
+  let mdImageUploadTarget = null; // style currently being uploaded an image for
+  let sheetSections = []; // [{group, rows:[{op,mc,smv}]}]
+  let sketchDataUrl = null;
+  let mdSelectedStyle = null; // filter pill in master tab
+  let mdSelectedRow = null; // {style, idx} - row clicked in master data table, insertion anchor
+  let mdEditingRow = null; // {style, idx} - row currently in inline edit mode
+  let pillsExpanded = false;
+  let openedSavedId = null; // id of the saved OB currently loaded in the builder, or null for a fresh/new one
+  let pendingRevisionOf = null; // id of the original saved OB this builder session is a revision of (e.g. "As Per Sample"), or null
+  let pendingRevisionLabel = null; // label for that revision, e.g. "As Per Sample"
+
+  const $ = (id) => document.getElementById(id);
+  const toastEl = $('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(()=>toastEl.classList.remove('show'), 1800);
+  }
+
+  function styleList(){
+    return Object.keys(masterData).sort();
+  }
+
+  // ---------- undo / redo ----------
+  let undoStack = [];
+  let redoStack = [];
+  const MAX_HISTORY = 60;
+
+  function snapshotState(){
+    return JSON.stringify({
+      masterData: masterData,
+      sheetSections: sheetSections,
+      sketchDataUrl: sketchDataUrl,
+      header: {
+        buyer: $('f-buyer').value, style: $('f-style').value, description: $('f-description').value, planline: $('f-planline').value,
+        orderqty: $('f-orderqty').value, leadtime: $('f-leadtime').value,
+        madeby: $('f-madeby').value, ordereff: $('f-ordereff').value
+      }
+    });
+  }
+
+  function pushUndo(){
+    undoStack.push(snapshotState());
+    if(undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+  }
+
+  function applySnapshot(snapStr){
+    const snap = JSON.parse(snapStr);
+    masterData = snap.masterData;
+    sheetSections = snap.sheetSections;
+    sketchDataUrl = snap.sketchDataUrl;
+    const h = snap.header || {};
+    $('f-buyer').value = h.buyer || '';
+    $('f-style').value = h.style || '';
+    $('f-description').value = h.description || '';
+    $('f-planline').value = h.planline || '';
+    $('f-orderqty').value = h.orderqty || '';
+    $('f-leadtime').value = h.leadtime || '';
+    $('f-madeby').value = h.madeby || '';
+    $('f-ordereff').value = h.ordereff || '';
+
+    mdSelectedRow = null;
+    colorPickerFor = null;
+    addingRowSecIdx = null;
+    selectedOpRow = null;
+
+    renderSketch();
+    renderSections();
+    if($('panel-master').classList.contains('active')) renderMasterTab();
+    schedulePersist();
+  }
+
+  function undo(){
+    if(!undoStack.length){ toast('Nothing to undo'); return; }
+    redoStack.push(snapshotState());
+    applySnapshot(undoStack.pop());
+    toast('Undone');
+  }
+
+  function redo(){
+    if(!redoStack.length){ toast('Nothing to redo'); return; }
+    undoStack.push(snapshotState());
+    applySnapshot(redoStack.pop());
+    toast('Redone');
+  }
+
+  document.addEventListener('keydown', (e)=>{
+    const key = e.key.toLowerCase();
+    const isUndoKey = (e.ctrlKey || e.metaKey) && key === 'z';
+    const isRedoKey = (e.ctrlKey || e.metaKey) && (key === 'y' || (key === 'z' && e.shiftKey));
+    if(!isUndoKey && !isRedoKey) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const inTextField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if(inTextField) return; // let the browser's native undo handle in-field text edits
+    e.preventDefault();
+    if(isRedoKey) redo(); else undo();
+  });
+
+  // ---------- persistence (best-effort, personal scope) ----------
+  async function loadPersisted(){
+    try{
+      const md = await window.storage.get('ob_master_data');
+      if(md && md.value){ masterData = JSON.parse(md.value); }
+    }catch(e){ /* no saved master data yet */ }
+    // Defensive cleanup: drop any corrupted operation entries (missing a
+    // real name) that might have slipped in from an older version — these
+    // were crashing the Master Data screen.
+    Object.keys(masterData).forEach(g=>{
+      if(Array.isArray(masterData[g])){
+        masterData[g] = masterData[g].filter(o => o && typeof o.op === 'string' && o.op.trim());
+      }
+    });
+    try{
+      const mi = await window.storage.get('ob_master_images');
+      if(mi && mi.value){ masterImages = JSON.parse(mi.value); }
+    }catch(e){ /* no saved master images yet */ }
+    try{
+      const us = await window.storage.get('ob_users');
+      if(us && us.value){
+        const loadedUsers = JSON.parse(us.value);
+        if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
+      }
+    }catch(e){ /* no saved users yet */ }
+    // Ensure the default admin account always exists, even if older/other data was persisted previously
+    if(!appUsers.some(u => u.username && u.username.toLowerCase() === 'karthi')){
+      appUsers.unshift({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true});
+    } else {
+      const idx = appUsers.findIndex(u => u.username && u.username.toLowerCase() === 'karthi');
+      appUsers[idx].password = 'karthi4478';
+      appUsers[idx].admin = true;
+      appUsers[idx].menus = ['dashboard','costsheet','master','layout','saved','users'];
+      appUsers[idx].permSmv = true;
+      appUsers[idx].permDelete = true;
+      appUsers[idx].permCreate = true;
+    }
+    try{
+      const sr = await window.storage.get('ob_current_sheet_v2');
+      if(sr && sr.value){
+        const parsed = JSON.parse(sr.value);
+        sheetSections = parsed.sections || [];
+        sketchDataUrl = parsed.sketch || null;
+        if(parsed.header){
+          $('f-buyer').value = parsed.header.buyer || '';
+          $('f-style').value = parsed.header.style || '';
+          $('f-description').value = parsed.header.description || '';
+          $('f-planline').value = parsed.header.planline || '';
+          $('f-orderqty').value = parsed.header.orderqty || '';
+          $('f-leadtime').value = parsed.header.leadtime || '';
+          $('f-madeby').value = parsed.header.madeby || '';
+          $('f-ordereff').value = parsed.header.ordereff || '';
+        }
+      }
+    }catch(e){ /* no saved sheet yet */ }
+  }
+
+  let saveTimer = null;
+  function schedulePersist(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persistAll, 500);
+  }
+  async function persistAll(){
+    try{ await window.storage.set('ob_master_data', JSON.stringify(masterData)); }catch(e){}
+    try{ await window.storage.set('ob_master_images', JSON.stringify(masterImages)); }catch(e){}
+    try{ await window.storage.set('ob_users', JSON.stringify(appUsers)); }catch(e){}
+    try{
+      const payload = {
+        sections: sheetSections,
+        sketch: sketchDataUrl,
+        header: {
+          buyer: $('f-buyer').value, style: $('f-style').value, description: $('f-description').value, planline: $('f-planline').value,
+          orderqty: $('f-orderqty').value, leadtime: $('f-leadtime').value,
+          madeby: $('f-madeby').value, ordereff: $('f-ordereff').value
+        }
+      };
+      await window.storage.set('ob_current_sheet_v2', JSON.stringify(payload));
+    }catch(e){}
+  }
+
+  // ---------- new style: reset builder to a blank OB ----------
+  function resetBuilder(){
+    pushUndo();
+    sheetSections = [];
+    sketchDataUrl = null;
+    $('f-buyer').value = '';
+    $('f-style').value = '';
+    $('f-description').value = '';
+    $('f-planline').value = '';
+    $('f-orderqty').value = '';
+    $('f-leadtime').value = '';
+    $('f-madeby').value = '';
+    $('f-ordereff').value = '';
+    mdSelectedRow = null;
+    colorPickerFor = null;
+    addingRowSecIdx = null;
+    selectedOpRow = null;
+    openedSavedId = null;
+    pendingRevisionOf = null;
+    pendingRevisionLabel = null;
+    renderSketch();
+    renderSections();
+    schedulePersist();
+    toast('New Operation Bulletin — start fresh');
+  }
+
+  // ---------- sidebar nav ----------
+  document.querySelectorAll('.side-nav-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      document.querySelectorAll('.side-nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      $('panel-'+btn.dataset.tab).classList.add('active');
+      // The kebab menu only ever makes sense on the cost sheet — show/hide it
+      // explicitly here so it's correct however this tab was reached (sidebar
+      // click, Edit from Saved list, Open OB from Dashboard, etc).
+      const obMenuWrap = $('ob-mobile-menu-wrap');
+      if(obMenuWrap) obMenuWrap.style.display = (btn.dataset.tab === 'costsheet') ? '' : 'none';
+      // Only reset when the person actually clicks "New Style" themselves.
+      // Programmatic navigation (Edit from Saved list, Open OB from Dashboard) uses
+      // goToTab()/btn.click() which fires an untrusted event, so it won't wipe the loaded OB.
+      if(btn.dataset.tab === 'costsheet' && e.isTrusted) resetBuilder();
+      if(btn.dataset.tab === 'master') renderMasterTab();
+      if(btn.dataset.tab === 'layout'){
+        if(e.isTrusted){ currentLayout = null; renderLayoutEditor(); }
+        renderLayoutSavedList();
+      }
+      if(btn.dataset.tab === 'users') renderUsers();
+      if(btn.dataset.tab === 'saved') renderSavedList();
+      if(btn.dataset.tab === 'styles') renderStylesList();
+      if(btn.dataset.tab === 'dashboard') renderDashboard();
+      closeSidebar();
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+
+  function goToTab(tabName){
+    const btn = document.querySelector('.side-nav-btn[data-tab="'+tabName+'"]');
+    if(btn) btn.click();
+  }
+
+  // ---------- mobile sidebar toggle ----------
+  const sidebarEl = $('sidebar');
+  const sidebarBackdrop = $('sidebarBackdrop');
+  function openSidebar(){ sidebarEl.classList.add('open'); sidebarBackdrop.classList.add('show'); }
+  function closeSidebar(){ sidebarEl.classList.remove('open'); sidebarBackdrop.classList.remove('show'); }
+  const hambBtn = $('hamb');
+  if(hambBtn) hambBtn.addEventListener('click', openSidebar);
+  if(sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeSidebar);
+
+  // ---------- mobile kebab menu (Operation Breakdown actions) ----------
+  const obMenuBtn = $('ob-menu-btn');
+  const obMenuDropdown = $('ob-menu-dropdown');
+  if(obMenuBtn && obMenuDropdown){
+    obMenuBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const open = obMenuDropdown.classList.toggle('open');
+      obMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    obMenuDropdown.querySelectorAll('.ob-menu-item').forEach(item=>{
+      item.addEventListener('click', ()=>{
+        obMenuDropdown.classList.remove('open');
+        obMenuBtn.setAttribute('aria-expanded', 'false');
+        const target = $(item.dataset.target);
+        if(target) target.click();
+      });
+    });
+    document.addEventListener('click', (e)=>{
+      if(!e.target.closest('.ob-mobile-menu-wrap')) obMenuDropdown.classList.remove('open');
+    });
+  }
+
+  // ---------- buyer-wise saved OB ----------
+  function currentTotals(){
+    return {
+      totalSmv: ($('total-smv') && $('total-smv').textContent) || '0.00',
+      totalOps: ($('total-ops') && $('total-ops').textContent) || '0'
+    };
+  }
+
+  $('save-ob-btn').addEventListener('click', async ()=>{
+    const buyer = $('f-buyer').value.trim();
+    const style = $('f-style').value.trim();
+    if(!buyer || !style){ toast('Enter Buyer and Style before saving'); return; }
+    const totals = currentTotals();
+    // If this builder currently has a saved OB loaded, update that same record
+    // instead of creating a new one each time Save OB is clicked.
+    const id = openedSavedId || ('sv' + Date.now());
+    const payload = {
+      id: id,
+      buyer: buyer,
+      style: style,
+      description: $('f-description').value,
+      planline: $('f-planline').value,
+      orderqty: $('f-orderqty').value,
+      leadtime: $('f-leadtime').value,
+      madeby: $('f-madeby').value,
+      ordereff: $('f-ordereff').value,
+      totalSmv: totals.totalSmv,
+      totalOps: totals.totalOps,
+      sections: sheetSections,
+      sketch: sketchDataUrl,
+      savedAt: new Date().toISOString(),
+      savedBy: currentUser ? currentUser.username : ''
+    };
+    if(pendingRevisionOf){
+      payload.revisionOf = pendingRevisionOf;
+      payload.revisionLabel = pendingRevisionLabel || 'As Per Sample';
+    }
+    try{
+      const wasUpdate = !!openedSavedId;
+      const wasRevision = !!pendingRevisionOf;
+      await window.storage.set('ob_saved:' + id, JSON.stringify(payload));
+      openedSavedId = id;
+      pendingRevisionOf = null;
+      pendingRevisionLabel = null;
+      toast(wasUpdate ? 'OB saved — updated ' + style : (wasRevision ? 'OB saved — "As Per Sample" linked to ' + style : 'OB saved — under ' + buyer));
+    }catch(e){
+      toast('Could not save — try again');
+    }
+  });
+
+  $('close-ob-btn').addEventListener('click', ()=>{
+    // Cancel any pending autosave so simply closing this OB doesn't write an extra save.
+    clearTimeout(saveTimer);
+    sheetSections = [];
+    sketchDataUrl = null;
+    $('f-buyer').value = '';
+    $('f-style').value = '';
+    $('f-description').value = '';
+    $('f-planline').value = '';
+    $('f-orderqty').value = '';
+    $('f-leadtime').value = '';
+    $('f-madeby').value = '';
+    $('f-ordereff').value = '';
+    mdSelectedRow = null;
+    colorPickerFor = null;
+    addingRowSecIdx = null;
+    selectedOpRow = null;
+    insertFormAt = null;
+    openedSavedId = null;
+    pendingRevisionOf = null;
+    pendingRevisionLabel = null;
+    renderSketch();
+    renderSections();
+    goToTab('saved');
+    toast('Closed — nothing extra was saved');
+  });
+
+  async function fetchSavedList(){
+    const items = [];
+    try{
+      const listRes = await window.storage.list('ob_saved:');
+      const keys = (listRes && listRes.keys) || [];
+      for(const k of keys){
+        try{
+          const rec = await window.storage.get(k);
+          if(rec && rec.value) items.push(JSON.parse(rec.value));
+        }catch(e){ /* skip broken record */ }
+      }
+    }catch(e){ /* no saved records yet */ }
+    items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    return items;
+  }
+
+  // ---------- Layout Builder ----------
+  let currentLayout = null; // {id, sourceObId, buyer, style, description, hours, eff, sections:[{group, rows:[{op,mc,smv,manpower}]}]}
+
+  async function openLayoutFromOB(rec){
+    const lyId = 'ly_' + rec.id;
+    let existing = null;
+    try{
+      const got = await window.storage.get('layout_saved:' + lyId);
+      if(got && got.value) existing = JSON.parse(got.value);
+    }catch(e){ /* no layout saved for this OB yet */ }
+
+    const freshSections = (rec.sections || []).map(sec => ({
+      group: sec.group,
+      rows: (sec.rows || []).map(r => {
+        let manpower = 0;
+        if(existing){
+          const oldSec = (existing.sections || []).find(s => s.group === sec.group);
+          const oldRow = oldSec && oldSec.rows.find(rr => rr.op === r.op);
+          if(oldRow) manpower = oldRow.manpower || 0;
+        }
+        return {op: r.op, mc: r.mc || '', smv: r.smv || 0, manpower};
+      })
+    }));
+
+    currentLayout = {
+      id: lyId,
+      sourceObId: rec.id,
+      buyer: rec.buyer || '',
+      style: rec.style || '',
+      description: rec.description || '',
+      hours: existing && existing.hours ? existing.hours : 8,
+      eff: existing && existing.eff != null ? existing.eff : '',
+      sketch: rec.sketch || (existing ? existing.sketch : null) || null,
+      sections: freshSections
+    };
+    renderLayoutEditor();
+    goToTab('layout');
+    toast(existing ? 'Layout reopened — SMV & Machine refreshed from the OB' : 'Copied to Layout — enter Manpower and Efficiency below');
+  }
+
+  function layoutTotals(){
+    let totalSmv = 0, totalManpower = 0;
+    (currentLayout.sections || []).forEach(sec => sec.rows.forEach(r => {
+      totalSmv += (r.smv || 0);
+      totalManpower += (r.manpower || 0);
+    }));
+    const hours = parseFloat($('ly-hours').value) || 0;
+    const effPct = parseFloat($('ly-eff').value) || 0;
+    const dayOutput100 = (totalManpower > 0 && totalSmv > 0 && hours > 0) ? (totalManpower * hours * 60) / totalSmv : 0;
+    const plannedOutput = dayOutput100 * (effPct / 100);
+    const perHourTarget100 = hours > 0 ? dayOutput100 / hours : 0;
+    // Pitch Time: SMV per head across the whole line — the base pace of the line.
+    const pitchTime = totalManpower > 0 ? totalSmv / totalManpower : 0;
+    // Upper Pitch (Tack Time): pitch time pulled in to the target efficiency.
+    const upperPitch = pitchTime * (effPct / 100);
+    // Lower Pitch: mirrors Upper Pitch the same distance below Pitch Time.
+    const lowerPitch = pitchTime + (pitchTime - upperPitch);
+    return {totalSmv, totalManpower, hours, effPct, dayOutput100, plannedOutput, perHourTarget100, pitchTime, upperPitch, lowerPitch};
+  }
+
+  function renderLayoutEditor(){
+    const emptyNote = $('layout-empty-note');
+    const editor = $('layout-editor');
+    if(!currentLayout){
+      emptyNote.style.display = 'block';
+      editor.style.display = 'none';
+      return;
+    }
+    emptyNote.style.display = 'none';
+    editor.style.display = 'block';
+
+    $('ly-buyer').value = currentLayout.buyer;
+    $('ly-style').value = currentLayout.style;
+    $('ly-description').value = currentLayout.description;
+    $('ly-hours').value = currentLayout.hours;
+    $('ly-eff').value = currentLayout.eff;
+
+    const sketchBox = $('ly-sketch-box');
+    sketchBox.innerHTML = currentLayout.sketch
+      ? `<img src="${currentLayout.sketch}" alt="Garment reference">`
+      : `<div class="ly-sketch-ph" id="ly-sketch-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>No image on the OB</span></div>`;
+
+    const t = layoutTotals();
+
+    $('layout-summary').innerHTML = `
+      <div class="layout-stat-card"><div class="layout-stat-label">Total SMV</div><div class="layout-stat-val">${t.totalSmv.toFixed(2)}</div></div>
+      <div class="layout-stat-card"><div class="layout-stat-label">Plan Cadre (Manpower)</div><div class="layout-stat-val">${t.totalManpower.toFixed(1)}</div></div>
+      <div class="layout-stat-card"><div class="layout-stat-label">Day Output @ 100%</div><div class="layout-stat-val">${t.dayOutput100.toFixed(0)}</div></div>
+      <div class="layout-stat-card"><div class="layout-stat-label">Planned Output</div><div class="layout-stat-val">${t.plannedOutput.toFixed(0)}</div></div>
+    `;
+
+    const wrap = $('layout-groups-wrap');
+    wrap.innerHTML = currentLayout.sections.map((sec, secIdx)=>{
+      const secSmv = sec.rows.reduce((s,r)=>s+(r.smv||0),0);
+      const rows = sec.rows.map((r, rowIdx)=>{
+        const hourlyTarget = r.smv > 0 ? 60 / r.smv : 0;
+        const reqManpower = t.totalSmv > 0 ? (r.smv / t.totalSmv) * t.totalManpower : 0;
+        const outputFlow = (r.manpower || 0) * hourlyTarget;
+        const balEff = t.perHourTarget100 > 0 ? (outputFlow / t.perHourTarget100) * 100 : 0;
+        let badgeClass = 'flat', badgeText = '—';
+        if(r.manpower > 0 && t.perHourTarget100 > 0){
+          badgeText = balEff.toFixed(0) + '%';
+          badgeClass = (balEff >= 90 && balEff <= 110) ? 'good' : (balEff >= 70 && balEff <= 130) ? 'warn' : 'bad';
+        }
+        const isHeadingOp = !r.mc && !r.smv;
+        return `
+        <tr data-sec="${secIdx}" data-row="${rowIdx}" class="${isHeadingOp ? 'ly-heading-row' : ''}">
+          <td><span class="${isHeadingOp ? 'ly-heading-text' : ''}">${escHtml(r.op)}</span></td>
+          <td>${r.mc ? `<span class="machine-badge">${escHtml(r.mc)}</span>` : ''}</td>
+          <td class="num"><span class="ly-smv-locked">${r.smv ? r.smv.toFixed(2) : '—'}</span></td>
+          <td class="num">${isHeadingOp ? '—' : hourlyTarget.toFixed(1)}</td>
+          <td class="num">${isHeadingOp ? '' : `<input type="text" inputmode="decimal" class="ly-mp-input" data-sec="${secIdx}" data-row="${rowIdx}" value="${r.manpower || 0}">`}</td>
+          <td class="num">${isHeadingOp ? '—' : reqManpower.toFixed(2)}</td>
+          <td class="num">${isHeadingOp ? '—' : outputFlow.toFixed(1)}</td>
+          <td class="num"><span class="ly-badge ${badgeClass}">${isHeadingOp ? '—' : badgeText}</span></td>
+        </tr>`;
+      }).join('');
+      return `
+      <div class="layout-group">
+        <div class="layout-group-head">
+          <h4>${escHtml(sec.group)}</h4>
+          <span class="lgh-cnt">${sec.rows.length} operation${sec.rows.length===1?'':'s'} · ${secSmv.toFixed(2)} SMV</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="optbl-layout">
+            <thead><tr>
+              <th>Operation</th><th>Machine</th><th class="num">SMV</th><th class="num">Hourly Target</th>
+              <th class="num">Manpower</th><th class="num">Req.</th><th class="num">Output/Hr</th><th class="num">Bal. Eff</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.ly-mp-input').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        const s = +inp.dataset.sec, r = +inp.dataset.row;
+        currentLayout.sections[s].rows[r].manpower = parseFloat(inp.value) || 0;
+        renderLayoutEditor();
+      });
+      inp.addEventListener('keydown', (e)=>{
+        if(e.key !== 'Enter') return;
+        e.preventDefault();
+        const s = +inp.dataset.sec, r = +inp.dataset.row;
+        currentLayout.sections[s].rows[r].manpower = parseFloat(inp.value) || 0;
+        const order = [];
+        currentLayout.sections.forEach((sec, si)=> sec.rows.forEach((rr, ri)=>{ if(rr.mc || rr.smv) order.push([si, ri]); }));
+        const curPos = order.findIndex(([si, ri])=> si === s && ri === r);
+        const next = order[curPos + 1];
+        renderLayoutEditor();
+        if(next){
+          const nextInp = document.querySelector(`.ly-mp-input[data-sec="${next[0]}"][data-row="${next[1]}"]`);
+          if(nextInp){ nextInp.focus(); nextInp.select(); }
+        }
+      });
+    });
+
+    renderPitchDiagram(t);
+  }
+
+  function renderPitchDiagram(t){
+    const wrap = $('layout-pitch-wrap');
+    const flat = [];
+    currentLayout.sections.forEach(sec => sec.rows.forEach(r => {
+      if(r.smv > 0){
+        const eff = r.manpower > 0 ? r.smv / r.manpower : r.smv;
+        flat.push({op: r.op, smv: r.smv, manpower: r.manpower || 0, eff});
+      }
+    }));
+
+    const ucl = Math.max(t.upperPitch, t.lowerPitch);
+    const lcl = Math.min(t.upperPitch, t.lowerPitch);
+    const hasBand = t.pitchTime > 0 && t.effPct > 0 && ucl > lcl;
+    const unbalancedCount = hasBand ? flat.filter(r => r.eff > ucl || r.eff < lcl).length : 0;
+
+    let chartHtml = '<div class="layout-hint">Enter Manpower for every operation and set Target Efficiency % above to see the pitch diagram.</div>';
+
+    if(flat.length && hasBand){
+      const padL = 44, padR = 16, padT = 34, padB = 82, chartW = 44, chartH = 220;
+      const n = flat.length;
+      const plotW = Math.max(360, n * chartW);
+      const svgW = padL + plotW + padR;
+      const svgH = padT + chartH + padB;
+      const maxVal = Math.max(ucl, ...flat.map(r=>r.eff)) * 1.15;
+      const yFor = (v)=> padT + chartH - (v / maxVal) * chartH;
+      const xFor = (i)=> padL + (n===1 ? plotW/2 : (i/(n-1)) * (plotW - chartW) + chartW/2);
+
+      const pts = flat.map((r,i)=> [xFor(i), yFor(r.eff)]);
+      const polyline = pts.map(p=>p.join(',')).join(' ');
+      const dots = flat.map((r,i)=>{
+        const bad = r.eff > ucl || r.eff < lcl;
+        const [x,y] = pts[i];
+        const tip = r.manpower > 0
+          ? `${escAttr(r.op)} — ${r.smv.toFixed(2)} SMV ÷ ${r.manpower} = ${r.eff.toFixed(3)}${bad?' (unbalanced)':''}`
+          : `${escAttr(r.op)} — ${r.smv.toFixed(2)} SMV (no manpower set)${bad?' (unbalanced)':''}`;
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${bad?5:3.5}" style="fill:${bad?'var(--danger)':'#2f6fb0'};stroke:#fff;stroke-width:1.2;"><title>${tip}</title></circle>`;
+      }).join('');
+      const labels = flat.map((r,i)=>{
+        const [x] = pts[i];
+        const label = r.op.length > 22 ? r.op.slice(0,21) + '…' : r.op;
+        return `<text x="${x.toFixed(1)}" y="${padT+chartH+10}" font-size="9" font-weight="600" text-anchor="end" style="fill:var(--ink);" transform="rotate(-62 ${x.toFixed(1)} ${padT+chartH+10})">${escHtml(label.toUpperCase())}</text>`;
+      }).join('');
+
+      // Y-axis ticks
+      const tickCount = 5;
+      let yTicks = '';
+      for(let i=0;i<=tickCount;i++){
+        const v = (maxVal / tickCount) * i;
+        const y = yFor(v);
+        yTicks += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+plotW}" y2="${y.toFixed(1)}" style="stroke:#eee;stroke-width:1;"/>
+          <text x="${padL-6}" y="${(y+3).toFixed(1)}" font-size="9" text-anchor="end" style="fill:var(--ink-soft);">${v.toFixed(2)}</text>`;
+      }
+
+      const uclY = yFor(ucl), lclY = yFor(lcl), midY = yFor(t.pitchTime);
+      const bandLines = `
+        <line x1="${padL}" y1="${uclY.toFixed(1)}" x2="${padL+plotW}" y2="${uclY.toFixed(1)}" style="stroke:var(--danger);stroke-width:1.6;stroke-dasharray:6,4;"/>
+        <text x="${padL+plotW-2}" y="${(uclY-5).toFixed(1)}" font-size="9.5" font-weight="700" text-anchor="end" style="fill:var(--danger);">UCL ${ucl.toFixed(2)}</text>
+        <line x1="${padL}" y1="${lclY.toFixed(1)}" x2="${padL+plotW}" y2="${lclY.toFixed(1)}" style="stroke:var(--danger);stroke-width:1.6;stroke-dasharray:6,4;"/>
+        <text x="${padL+plotW-2}" y="${(lclY+13).toFixed(1)}" font-size="9.5" font-weight="700" text-anchor="end" style="fill:var(--danger);">LCL ${lcl.toFixed(2)}</text>
+        <line x1="${padL}" y1="${midY.toFixed(1)}" x2="${padL+plotW}" y2="${midY.toFixed(1)}" style="stroke:#7a7a3d;stroke-width:1.4;stroke-dasharray:3,3;"/>
+        <text x="${padL+4}" y="${(midY-5).toFixed(1)}" font-size="9.5" font-weight="700" style="fill:#7a7a3d;">Pitch Time ${t.pitchTime.toFixed(2)}</text>
+      `;
+
+      chartHtml = `<div style="overflow-x:auto;background:#fff;">
+        <svg viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" style="max-width:100%;font-family:'Inter',sans-serif;">
+          <text x="${svgW/2}" y="18" font-size="13" font-weight="700" text-anchor="middle" style="fill:var(--navy);">PITCH TIME DIAGRAM</text>
+          <text x="14" y="${padT+chartH/2}" font-size="9.5" font-weight="700" text-anchor="middle" style="fill:var(--ink-soft);" transform="rotate(-90 14 ${padT+chartH/2})">SMV / Manpower</text>
+          ${yTicks}
+          <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+chartH}" style="stroke:#333;stroke-width:1.2;"/>
+          <line x1="${padL}" y1="${padT+chartH}" x2="${padL+plotW}" y2="${padT+chartH}" style="stroke:#333;stroke-width:1.2;"/>
+          ${bandLines}
+          <polyline points="${polyline}" style="fill:none;stroke:#2f6fb0;stroke-width:2.4;"/>
+          ${dots}
+          ${labels}
+        </svg>
+      </div>`;
+    }
+
+    wrap.innerHTML = `<div class="pitch-card">
+      <h4>Pitch Diagram</h4>
+      <div class="pitch-stat-grid">
+        <div class="layout-stat-card"><div class="layout-stat-label">Pitch Time</div><div class="layout-stat-val">${t.pitchTime.toFixed(2)}</div></div>
+        <div class="layout-stat-card"><div class="layout-stat-label">UCL</div><div class="layout-stat-val">${ucl.toFixed(2)}</div></div>
+        <div class="layout-stat-card"><div class="layout-stat-label">LCL</div><div class="layout-stat-val">${lcl.toFixed(2)}</div></div>
+        <div class="layout-stat-card"><div class="layout-stat-label">Unbalanced Ops</div><div class="layout-stat-val" style="${unbalancedCount>0?'color:var(--danger);':''}">${unbalancedCount}</div></div>
+      </div>
+      ${chartHtml}
+    </div>`;
+  }
+
+  $('ly-hours').addEventListener('change', ()=>{ if(currentLayout){ currentLayout.hours = parseFloat($('ly-hours').value) || 0; renderLayoutEditor(); } });
+  $('ly-eff').addEventListener('change', ()=>{ if(currentLayout){ currentLayout.eff = $('ly-eff').value; renderLayoutEditor(); } });
+
+  $('ly-sketch-box').addEventListener('click', ()=>{
+    if(currentLayout && currentLayout.sketch) openLightbox(currentLayout.sketch);
+  });
+
+  $('layout-close-btn').addEventListener('click', ()=>{ currentLayout = null; renderLayoutEditor(); });
+
+  $('layout-save-btn').addEventListener('click', async ()=>{
+    if(!currentLayout){ toast('Nothing to save'); return; }
+    currentLayout.hours = parseFloat($('ly-hours').value) || 0;
+    currentLayout.eff = $('ly-eff').value;
+    const payload = Object.assign({}, currentLayout, {
+      savedAt: new Date().toISOString(),
+      savedBy: currentUser ? currentUser.username : ''
+    });
+    try{
+      await window.storage.set('layout_saved:' + currentLayout.id, JSON.stringify(payload));
+      toast('Layout saved for ' + currentLayout.style);
+      renderLayoutSavedList();
+    }catch(e){
+      toast('Could not save layout — try again');
+    }
+  });
+
+  $('layout-export-excel-btn').addEventListener('click', ()=>{
+    if(!currentLayout){ toast('Open a layout first'); return; }
+    const t = layoutTotals();
+    const aoa = [];
+    aoa.push(['LAYOUT — ' + (currentLayout.style || ''), '', '', '', '', '', '', '']);
+    aoa.push(['Buyer', currentLayout.buyer || '', 'Description', currentLayout.description || '', 'Working Hours', t.hours, 'Target Eff %', t.effPct]);
+    aoa.push(['Total SMV', +t.totalSmv.toFixed(2), 'Plan Cadre', +t.totalManpower.toFixed(1), 'Day Output @100%', +t.dayOutput100.toFixed(0), 'Planned Output', +t.plannedOutput.toFixed(0)]);
+    aoa.push(['Pitch Time', +t.pitchTime.toFixed(2), 'UCL', +Math.max(t.upperPitch,t.lowerPitch).toFixed(2), 'LCL', +Math.min(t.upperPitch,t.lowerPitch).toFixed(2), '', '']);
+    aoa.push([]);
+    aoa.push(['SL','Operation','Machine','SMV','Hourly Target','Manpower','Req.','Output/Hr','Bal. Eff %']);
+    let sl = 1;
+    currentLayout.sections.forEach(sec=>{
+      aoa.push([sec.group,'','','','','','','','']);
+      sec.rows.forEach(r=>{
+        const isHeadingOp = !r.mc && !r.smv;
+        const hourlyTarget = r.smv > 0 ? 60 / r.smv : 0;
+        const reqManpower = t.totalSmv > 0 ? (r.smv / t.totalSmv) * t.totalManpower : 0;
+        const outputFlow = (r.manpower || 0) * hourlyTarget;
+        const balEff = t.perHourTarget100 > 0 ? (outputFlow / t.perHourTarget100) * 100 : 0;
+        aoa.push([
+          isHeadingOp ? '' : sl++,
+          r.op,
+          r.mc || '',
+          r.smv || '',
+          isHeadingOp ? '' : +hourlyTarget.toFixed(2),
+          isHeadingOp ? '' : (r.manpower || 0),
+          isHeadingOp ? '' : +reqManpower.toFixed(2),
+          isHeadingOp ? '' : +outputFlow.toFixed(2),
+          isHeadingOp ? '' : (r.manpower ? +balEff.toFixed(1) : '')
+        ]);
+      });
+    });
+    aoa.push([]);
+    aoa.push(['Note: the garment reference image is included in the PDF export, not in this Excel file.']);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:6},{wch:34},{wch:14},{wch:9},{wch:13},{wch:11},{wch:9},{wch:11},{wch:11}];
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:8} }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Layout');
+    const filename = (currentLayout.style || 'layout').replace(/[^a-z0-9]+/gi,'_') + '_layout.xlsx';
+    XLSX.writeFile(wb, filename);
+    toast('Excel downloaded');
+  });
+
+  $('layout-export-pdf-btn').addEventListener('click', ()=>{
+    if(!currentLayout){ toast('Open a layout first'); return; }
+    if(typeof html2pdf === 'undefined'){
+      toast('PDF library did not load — check your internet connection and try again');
+      return;
+    }
+    const filename = (currentLayout.style || 'layout').replace(/[^a-z0-9]+/gi,'_') + '_layout.pdf';
+    const target = document.getElementById('layout-print-card');
+    document.body.classList.add('pdf-mode');
+    toast('Preparing PDF…');
+    html2pdf().set({
+      margin: 8,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: target.scrollWidth, windowHeight: target.scrollHeight },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      pagebreak: { mode: ['css','avoid-all'] }
+    }).from(target).save().then(()=>{
+      document.body.classList.remove('pdf-mode');
+      toast('PDF downloaded');
+    }).catch((err)=>{
+      document.body.classList.remove('pdf-mode');
+      console.error(err);
+      toast('PDF export failed — please try again');
+    });
+  });
+
+  async function fetchLayoutList(){
+    const items = [];
+    try{
+      const listRes = await window.storage.list('layout_saved:');
+      const keys = (listRes && listRes.keys) || [];
+      for(const k of keys){
+        try{
+          const rec = await window.storage.get(k);
+          if(rec && rec.value) items.push(JSON.parse(rec.value));
+        }catch(e){ /* skip broken record */ }
+      }
+    }catch(e){ /* no saved layouts yet */ }
+    items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    return items;
+  }
+
+  async function renderLayoutSavedList(){
+    const wrap = $('layout-saved-list-wrap');
+    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const all = await fetchLayoutList();
+    const q = ($('layout-saved-search').value || '').trim().toLowerCase();
+
+    if(!all.length){
+      wrap.innerHTML = '<div class="saved-empty"><svg viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><div>No saved layouts yet.<br>Open a style under <b>Buyer wise OB Saved</b> and click <b>Copy to Layout</b>.</div></div>';
+      return;
+    }
+
+    const groups = {};
+    all.forEach(it=>{
+      const b = it.buyer || 'Unassigned';
+      (groups[b] = groups[b] || []).push(it);
+    });
+    const buyers = Object.keys(groups).sort((a,b)=> a.localeCompare(b));
+    const matches = (it) => !q || (it.buyer||'').toLowerCase().includes(q) || (it.style||'').toLowerCase().includes(q);
+    const visibleBuyers = buyers.filter(buyer => groups[buyer].some(matches) || (!q ? true : buyer.toLowerCase().includes(q)));
+
+    if(!visibleBuyers.length){
+      wrap.innerHTML = '<div class="saved-empty">No results for "' + escHtml($('layout-saved-search').value) + '".</div>';
+      return;
+    }
+
+    wrap.innerHTML = visibleBuyers.map(buyer=>{
+      const styleItems = groups[buyer];
+      const anyMatch = styleItems.some(matches);
+      const openState = q && anyMatch ? ' open' : '';
+      const rows = styleItems.map(it=>{
+        const totalSmv = (it.sections||[]).reduce((s,sec)=>s+sec.rows.reduce((s2,r)=>s2+(r.smv||0),0),0);
+        const totalManpower = (it.sections||[]).reduce((s,sec)=>s+sec.rows.reduce((s2,r)=>s2+(r.manpower||0),0),0);
+        const savedDate = it.savedAt ? new Date(it.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '';
+        const isHl = q && matches(it) ? ' hl' : '';
+        const metaParts = [];
+        metaParts.push('SMV ' + totalSmv.toFixed(2));
+        metaParts.push('Manpower ' + totalManpower.toFixed(1));
+        if(it.eff) metaParts.push('Eff ' + escHtml(String(it.eff)) + '%');
+        if(savedDate) metaParts.push('Saved ' + savedDate);
+        if(it.savedBy) metaParts.push('by ' + escHtml(it.savedBy));
+        return `<div class="style-row${isHl}" data-id="${escAttr(it.id)}">
+          <div>
+            <div class="sr-name saved-open-name ly-open-name" data-id="${escAttr(it.id)}" title="Open this Layout">${escHtml(it.style)}</div>
+            <div class="sr-meta">${metaParts.join(' · ')}</div>
+          </div>
+          <div class="sr-actions">
+            <button class="btn-edit ly-open-btn" data-id="${escAttr(it.id)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+              Open
+            </button>
+            ${(!currentUser || currentUser.admin || currentUser.permDelete) ? `<button class="btn-del-icon ly-del-btn" data-id="${escAttr(it.id)}" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+            </button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      const n = styleItems.length;
+      return `<div class="buyer-group${openState}" data-buyer="${escAttr(buyer)}">
+        <div class="buyer-group-head">
+          <div class="bg-left"><h3>${escHtml(buyer)}</h3></div>
+          <div class="bg-right"><span class="cnt">${n} style${n===1?'':'s'}</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+        <div class="buyer-group-body"><div class="buyer-group-body-inner">${rows}</div></div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.buyer-group-head').forEach(head=>{
+      head.addEventListener('click', ()=>{
+        head.closest('.buyer-group').classList.toggle('open');
+      });
+    });
+    wrap.querySelectorAll('.ly-open-btn, .ly-open-name').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const rec = all.find(it => it.id === el.dataset.id);
+        if(!rec) return;
+        currentLayout = JSON.parse(JSON.stringify(rec));
+        renderLayoutEditor();
+      });
+    });
+    wrap.querySelectorAll('.ly-del-btn').forEach(b=>{
+      b.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        if(!(!currentUser || currentUser.admin || currentUser.permDelete)){ toast('You do not have permission to delete'); return; }
+        if(!confirm('Delete this saved layout?')) return;
+        try{ await window.storage.delete('layout_saved:' + b.dataset.id); }catch(e){}
+        if(currentLayout && currentLayout.id === b.dataset.id){ currentLayout = null; renderLayoutEditor(); }
+        toast('Deleted');
+        renderLayoutSavedList();
+      });
+    });
+  }
+  $('layout-saved-search').addEventListener('input', renderLayoutSavedList);
+
+  // ---------- dashboard ----------
+  const GARMENT_TYPES = [
+    {key:'Hoodie',       match:['hood']},
+    {key:'Sweatshirt',   match:['sweat shirt','sweatshirt','sweat-shirt']},
+    {key:'T-Shirt',      match:['t-shirt','tshirt','t shirt']},
+    {key:'Polo',         match:['polo']},
+    {key:'Denim Shirt',  match:['denim shirt']},
+    {key:'Denim Pant',   match:['denim pant','denim trouser']},
+    {key:'Woven Shirt',  match:['woven shirt']},
+    {key:'Woven Pant',   match:['woven pant','woven trouser']},
+    {key:'Shirt',        match:['shirt']},
+    {key:'Jacket',       match:['jacket']},
+    {key:'Shorts',       match:['short']},
+    {key:'Pant',         match:['pant','trouser']},
+    {key:'Dress',        match:['dress']}
+  ];
+  function titleCase(s){
+    return s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+  // Tries to match a known garment type first (Hoodie, Polo, Denim Pant, etc.).
+  // If nothing matches, instead of dumping it into a generic "Other" bucket,
+  // group it under whatever description the person actually typed — so a new
+  // garment type shows up under its own real name the moment it's saved.
+  function categorize(matchText, fallbackText){
+    const t = (matchText || '').toLowerCase();
+    for(const gt of GARMENT_TYPES){
+      if(gt.match.some(m => t.includes(m))) return gt.key;
+    }
+    const fb = (fallbackText != null ? fallbackText : matchText || '').trim();
+    return fb ? titleCase(fb) : 'Uncategorized';
+  }
+
+  async function renderDashboard(){
+    const items = await fetchSavedList();
+
+    const distinctStyles = new Set(items.map(it => (it.style||'').trim().toUpperCase()).filter(Boolean));
+    const distinctBuyers = new Set(items.map(it => (it.buyer||'').trim().toUpperCase()).filter(Boolean));
+
+    $('dash-active-styles').textContent = distinctStyles.size;
+    $('dash-buyers').textContent = distinctBuyers.size;
+
+    // garment type breakdown (root styles only — sample revisions don't double-count)
+    const counts = {};
+    items.filter(it => !it.revisionOf).forEach(it => {
+      const k = categorize((it.style||'') + ' ' + (it.description||''), it.description);
+      counts[k] = (counts[k]||0) + 1;
+    });
+    const gtWrap = $('dash-garment-breakdown');
+    const entries = Object.keys(counts).map(k=>({key:k, count:counts[k]})).sort((a,b)=> b.count - a.count);
+    if(!entries.length){
+      gtWrap.innerHTML = '<div class="dash-empty-note">No styles saved yet — garment types will appear here once you save an OB.</div>';
+    } else {
+      const max = Math.max(...entries.map(e=>e.count));
+      gtWrap.innerHTML = entries.map(e => `
+        <div class="gt-row">
+          <div class="gt-label">${escHtml(e.key)}</div>
+          <div class="gt-bar-track"><div class="gt-bar-fill" style="width:${Math.round((e.count/max)*100)}%;"></div></div>
+          <div class="gt-count">${e.count}</div>
+        </div>`).join('');
+    }
+
+    // recently saved
+    const recentWrap = $('dash-recent-list');
+    const recent = items.slice(0,5);
+    if(!recent.length){
+      recentWrap.innerHTML = '<div class="dash-empty-note">Nothing saved yet — build a sheet under New Style and click Save OB.</div>';
+    } else {
+      recentWrap.innerHTML = recent.map(it=>{
+        const d = it.savedAt ? new Date(it.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '';
+        const tag = it.revisionOf ? ' · <span style="color:#7C6FE0;">' + escHtml(it.revisionLabel || 'As Per Sample') + '</span>' : '';
+        return `<div class="recent-row">
+          <div>
+            <div class="rr-name">${escHtml(it.style)}</div>
+            <div class="rr-meta">${escHtml(it.buyer||'—')}${d ? ' · '+d : ''}${tag}</div>
+          </div>
+          <div class="rr-smv">${escHtml(it.totalSmv||'0.00')}</div>
+        </div>`;
+      }).join('');
+    }
+  }
+  $('dashOpenBtn').addEventListener('click', ()=> goToTab('costsheet'));
+  $('dash-active-styles-card').addEventListener('click', ()=> goToTab('styles'));
+  $('dash-active-styles-card').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goToTab('styles'); } });
+  $('dash-buyers-card').addEventListener('click', ()=> goToTab('saved'));
+  $('dash-buyers-card').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goToTab('saved'); } });
+
+  function loadSavedRecord(rec, asRevision){
+    pushUndo();
+    sheetSections = JSON.parse(JSON.stringify(rec.sections || []));
+    sketchDataUrl = rec.sketch || null;
+    $('f-buyer').value = rec.buyer || '';
+    $('f-style').value = rec.style || '';
+    $('f-description').value = rec.description || '';
+    $('f-planline').value = rec.planline || '';
+    $('f-orderqty').value = rec.orderqty || '';
+    $('f-leadtime').value = rec.leadtime || '';
+    $('f-madeby').value = rec.madeby || '';
+    $('f-ordereff').value = rec.ordereff || '';
+    // Deliberately NOT set to rec.id: once you edit a saved OB and hit
+    // Save OB, it should save as its own new record, not overwrite the
+    // original saved one.
+    openedSavedId = null;
+    renderSketch();
+    renderSections();
+    goToTab('costsheet');
+    if(asRevision){
+      // Root of the chain: if rec itself is already a revision, link the new
+      // save back to the same original so everything stays in one group.
+      pendingRevisionOf = rec.revisionOf || rec.id;
+      pendingRevisionLabel = 'As Per Sample';
+      toast('Loaded ' + rec.style + ' — make your sample changes, then Save OB to save it as "As Per Sample"');
+    } else {
+      pendingRevisionOf = null;
+      pendingRevisionLabel = null;
+      toast('Loaded ' + rec.style + ' — editing will save as a new OB');
+    }
+  }
+
+  function styleMetaParts(it){
+    const savedDate = it.savedAt ? new Date(it.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '';
+    const metaParts = [];
+    metaParts.push((it.totalOps||'0') + ' operation' + ((it.totalOps==='1')?'':'s'));
+    if(it.description) metaParts.push(escHtml(it.description));
+    if(it.orderqty) metaParts.push(escHtml(it.orderqty) + ' pcs');
+    if(it.planline) metaParts.push(escHtml(it.planline));
+    if(it.leadtime) metaParts.push('Lead time ' + escHtml(it.leadtime) + 'd');
+    if(it.ordereff) metaParts.push('Order Eff ' + escHtml(it.ordereff) + '%');
+    metaParts.push('SMV ' + escHtml(it.totalSmv||'0.00'));
+    if(savedDate) metaParts.push('Saved ' + savedDate);
+    if(it.savedBy) metaParts.push('by ' + escHtml(it.savedBy));
+    return metaParts;
+  }
+
+  function renderRevisionRow(rev, isHl){
+    const metaParts = styleMetaParts(rev);
+    return `<div class="rev-row${isHl}" data-id="${escAttr(rev.id)}">
+      <div>
+        <div class="rev-badge-row"><span class="rev-badge">${escHtml(rev.revisionLabel || 'As Per Sample')}</span></div>
+        <div class="sr-meta">${metaParts.join(' · ')}</div>
+      </div>
+      <div class="sr-actions">
+        <button class="btn-edit sr-compare-btn" data-id="${escAttr(rev.id)}" title="See what changed vs the original" style="border-color:#7C6FE0;color:#7C6FE0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-3"/><path d="M17 3h4v4"/><path d="M21 3l-8 8"/><path d="M14 3H10v4"/></svg>
+          Compare
+        </button>
+        <button class="btn-edit sr-copy-layout-btn" data-id="${escAttr(rev.id)}" title="Copy this OB into a new Layout" style="border-color:var(--teal);color:var(--teal-dark);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          Copy to Layout
+        </button>
+        <button class="btn-edit sr-open-btn" data-id="${escAttr(rev.id)}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+          Edit
+        </button>
+        ${(!currentUser || currentUser.admin || currentUser.permDelete) ? `<button class="btn-del-icon sr-del-btn" data-id="${escAttr(rev.id)}" title="Delete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </button>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // Renders one root style row plus, nested underneath it, every "As Per
+  // Sample" revision that was saved against it — so the original and every
+  // sample update live together in one place instead of scattering into
+  // separate, unrelated style entries.
+  function renderRootRow(it, childRevisions, isHl, matches, q){
+    const metaParts = styleMetaParts(it);
+    const revHtml = childRevisions.length
+      ? `<div class="rev-list">` + childRevisions.map(rev => renderRevisionRow(rev, (q && matches(rev)) ? ' hl' : '')).join('') + `</div>`
+      : '';
+    return `<div class="style-row-wrap">
+      <div class="style-row${isHl}" data-id="${escAttr(it.id)}">
+        <div>
+          <div class="sr-name sr-open-name" data-id="${escAttr(it.id)}" title="Open this OB">${escHtml(it.style)}</div>
+          <div class="sr-meta">${metaParts.join(' · ')}</div>
+        </div>
+        <div class="sr-actions">
+          <button class="btn-edit sr-sample-btn" data-id="${escAttr(it.id)}" title="Save an updated version of this OB as per a sample — kept linked to the original" style="border-color:#7C6FE0;color:#7C6FE0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            As Per Sample
+          </button>
+          <button class="btn-edit sr-copy-layout-btn" data-id="${escAttr(it.id)}" title="Copy this OB into a new Layout" style="border-color:var(--teal);color:var(--teal-dark);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+            Copy to Layout
+          </button>
+          <button class="btn-edit sr-open-btn" data-id="${escAttr(it.id)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+            Edit
+          </button>
+          ${(!currentUser || currentUser.admin || currentUser.permDelete) ? `<button class="btn-del-icon sr-del-btn" data-id="${escAttr(it.id)}" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          </button>` : ''}
+        </div>
+      </div>
+      ${revHtml}
+    </div>`;
+  }
+
+  function wireStyleRowActions(wrap, all, rerender){
+    wrap.querySelectorAll('.sr-open-btn, .sr-open-name').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const rec = all.find(it => it.id === el.dataset.id);
+        if(rec) loadSavedRecord(rec);
+      });
+    });
+    wrap.querySelectorAll('.sr-sample-btn').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const rec = all.find(it => it.id === el.dataset.id);
+        if(rec) loadSavedRecord(rec, true);
+      });
+    });
+    wrap.querySelectorAll('.sr-copy-layout-btn').forEach(el=>{
+      el.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const rec = all.find(it => it.id === el.dataset.id);
+        if(!rec) return;
+        if(!rec.sections || !rec.sections.length){ toast('This OB has no operations to copy yet'); return; }
+        await openLayoutFromOB(rec);
+      });
+    });
+    wrap.querySelectorAll('.sr-del-btn').forEach(b=>{
+      b.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        if(!(!currentUser || currentUser.admin || currentUser.permDelete)){ toast('You do not have permission to delete'); return; }
+        if(!confirm('Delete this saved OB?')) return;
+        try{ await window.storage.delete('ob_saved:' + b.dataset.id); }catch(e){}
+        toast('Deleted');
+        rerender();
+      });
+    });
+    wrap.querySelectorAll('.sr-compare-btn').forEach(b=>{
+      b.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const rev = all.find(it => it.id === b.dataset.id);
+        if(!rev) return;
+        const orig = all.find(it => it.id === rev.revisionOf);
+        if(!orig){ toast('Original OB not found — it may have been deleted'); return; }
+        openCompareModal(orig, rev);
+      });
+    });
+  }
+
+  // ---------- compare "As Per Sample" vs the original ----------
+  function flattenOps(sections){
+    return (sections||[]).flatMap(sec => (sec.rows||[]).map(r => ({group: sec.group||'', op: r.op||'', mc: r.mc||'', smv: parseFloat(r.smv)||0})));
+  }
+  function opKey(r){ return (r.group+'|'+r.op+'|'+r.mc).toLowerCase(); }
+  function diffOperations(origSections, revSections){
+    const origRows = flattenOps(origSections);
+    const revRows = flattenOps(revSections);
+    const origMap = new Map(origRows.map(r=>[opKey(r), r]));
+    const revMap = new Map(revRows.map(r=>[opKey(r), r]));
+    const added = [], removed = [], changed = [];
+    revRows.forEach(r=>{
+      const k = opKey(r);
+      if(!origMap.has(k)) added.push(r);
+      else {
+        const o = origMap.get(k);
+        if(Math.abs((o.smv||0) - (r.smv||0)) > 0.001) changed.push({group:r.group, op:r.op, mc:r.mc, before:o.smv, after:r.smv});
+      }
+    });
+    origRows.forEach(r=>{ if(!revMap.has(opKey(r))) removed.push(r); });
+    return {added, removed, changed};
+  }
+  function diffFields(orig, rev){
+    const fields = [
+      {key:'description', label:'Description'},
+      {key:'planline',    label:'Plan Line'},
+      {key:'orderqty',    label:'Order Qty'},
+      {key:'leadtime',    label:'Lead Time (days)'},
+      {key:'madeby',      label:'Made By'},
+      {key:'ordereff',    label:'Order Eff %'},
+      {key:'totalSmv',    label:'Total SMV'},
+      {key:'totalOps',    label:'Total Operations'}
+    ];
+    return fields
+      .filter(f => String(orig[f.key]||'') !== String(rev[f.key]||''))
+      .map(f => ({label:f.label, before: orig[f.key] || '—', after: rev[f.key] || '—'}));
+  }
+  function closeCompareModal(){
+    const m = document.getElementById('compare-modal');
+    if(m) m.remove();
+  }
+  function openCompareModal(orig, rev){
+    closeCompareModal();
+    const fieldDiffs = diffFields(orig, rev);
+    const opDiff = diffOperations(orig.sections, rev.sections);
+    const savedDate = rev.savedAt ? new Date(rev.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '';
+
+    let html = '';
+    if(fieldDiffs.length){
+      html += `<div class="cmp-section-title">Order Details Changed</div>`;
+      html += fieldDiffs.map(d => `<div class="cmp-row cmp-changed"><div class="cmp-field">${escHtml(d.label)}</div><div class="cmp-before">${escHtml(String(d.before))}</div><div class="cmp-arrow">→</div><div class="cmp-after">${escHtml(String(d.after))}</div></div>`).join('');
+    }
+    if(opDiff.changed.length){
+      html += `<div class="cmp-section-title">Operations — SMV Changed</div>`;
+      html += opDiff.changed.map(d => `<div class="cmp-row cmp-changed"><div class="cmp-field">${escHtml(d.op)}${d.mc?' ('+escHtml(d.mc)+')':''}</div><div class="cmp-before">${(d.before||0).toFixed(2)}</div><div class="cmp-arrow">→</div><div class="cmp-after">${(d.after||0).toFixed(2)}</div></div>`).join('');
+    }
+    if(opDiff.added.length){
+      html += `<div class="cmp-section-title">Operations Added</div>`;
+      html += opDiff.added.map(d => `<div class="cmp-row cmp-added"><div class="cmp-field">+ ${escHtml(d.op)}${d.mc?' ('+escHtml(d.mc)+')':''}</div><div class="cmp-after">SMV ${(d.smv||0).toFixed(2)}</div></div>`).join('');
+    }
+    if(opDiff.removed.length){
+      html += `<div class="cmp-section-title">Operations Removed</div>`;
+      html += opDiff.removed.map(d => `<div class="cmp-row cmp-removed"><div class="cmp-field">− ${escHtml(d.op)}${d.mc?' ('+escHtml(d.mc)+')':''}</div><div class="cmp-before">SMV ${(d.smv||0).toFixed(2)}</div></div>`).join('');
+    }
+    if(!html){
+      html = `<div class="modal-empty">No differences found between the original and this sample version yet.</div>`;
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'compare-modal';
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-box" style="max-width:640px;">
+        <div class="modal-head">
+          <div>
+            <h3>${escHtml(rev.style)} — ${escHtml(rev.revisionLabel || 'As Per Sample')}</h3>
+            <div class="modal-sub">Compared against the original OB${savedDate ? ' · saved ' + savedDate : ''}</div>
+          </div>
+          <button class="modal-close" id="compare-modal-close" title="Close">&times;</button>
+        </div>
+        <div class="modal-list cmp-list">${html}</div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="compare-modal-done">Close</button></div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    $('compare-modal-close').addEventListener('click', closeCompareModal);
+    $('compare-modal-done').addEventListener('click', closeCompareModal);
+    backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) closeCompareModal(); });
+    document.addEventListener('keydown', function escHandler(e){
+      if(e.key === 'Escape'){ closeCompareModal(); document.removeEventListener('keydown', escHandler); }
+    });
+  }
+
+  async function renderSavedList(){
+    const wrap = $('saved-list-wrap');
+    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const all = await fetchSavedList();
+    const q = ($('saved-search').value || '').trim().toLowerCase();
+
+    if(!all.length){
+      wrap.innerHTML = '<div class="saved-empty"><svg viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8"/></svg><div>No saved Operation Bulletins yet.<br>Build a sheet under <b>New Style</b> and click <b>Save OB</b>.</div></div>';
+      return;
+    }
+
+    // Only root OBs (not sample revisions) count as their own style entry —
+    // revisions render nested underneath their original instead.
+    const roots = all.filter(it => !it.revisionOf);
+    const childrenOf = (id) => all.filter(it => it.revisionOf === id).sort((a,b)=> new Date(a.savedAt||0) - new Date(b.savedAt||0));
+
+    const groups = {};
+    roots.forEach(it=>{
+      const b = it.buyer || 'Unassigned';
+      (groups[b] = groups[b] || []).push(it);
+    });
+    const buyers = Object.keys(groups).sort((a,b)=> a.localeCompare(b));
+
+    const matches = (it) => !q || (it.buyer||'').toLowerCase().includes(q) || (it.style||'').toLowerCase().includes(q) || (it.planline||'').toLowerCase().includes(q) || (it.revisionLabel||'').toLowerCase().includes(q);
+    const groupMatches = (buyer) => groups[buyer].some(it => matches(it) || childrenOf(it.id).some(matches));
+
+    const visibleBuyers = buyers.filter(buyer => groupMatches(buyer) || (!q ? true : buyer.toLowerCase().includes(q)));
+
+    if(!visibleBuyers.length){
+      wrap.innerHTML = '<div class="saved-empty">No results for "' + escHtml($('saved-search').value) + '".</div>';
+      return;
+    }
+
+    wrap.innerHTML = visibleBuyers.map(buyer=>{
+      const styleItems = groups[buyer];
+      const openState = q && groupMatches(buyer) ? ' open' : '';
+      const rows = styleItems.map(it=>{
+        const isHl = q && matches(it) ? ' hl' : '';
+        return renderRootRow(it, childrenOf(it.id), isHl, matches, q);
+      }).join('');
+      const n = styleItems.length;
+      return `<div class="buyer-group${openState}" data-buyer="${escAttr(buyer)}">
+        <div class="buyer-group-head">
+          <div class="bg-left"><h3>${escHtml(buyer)}</h3></div>
+          <div class="bg-right"><span class="cnt">${n} style${n===1?'':'s'}</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+        <div class="buyer-group-body"><div class="buyer-group-body-inner">${rows}</div></div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.buyer-group-head').forEach(head=>{
+      head.addEventListener('click', ()=>{
+        head.closest('.buyer-group').classList.toggle('open');
+      });
+    });
+
+    wireStyleRowActions(wrap, all, renderSavedList);
+  }
+  $('saved-search').addEventListener('input', renderSavedList);
+
+  async function renderStylesList(){
+    const wrap = $('styles-list-wrap');
+    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const all = await fetchSavedList();
+    const q = ($('styles-search').value || '').trim().toLowerCase();
+
+    if(!all.length){
+      wrap.innerHTML = '<div class="saved-empty"><svg viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg><div>No styles saved yet.<br>Build a sheet under <b>New Style</b> and click <b>Save OB</b>.</div></div>';
+      return;
+    }
+
+    // Only root OBs (not sample revisions) get their own garment-type entry —
+    // revisions render nested underneath their original.
+    const roots = all.filter(it => !it.revisionOf);
+    const childrenOf = (id) => all.filter(it => it.revisionOf === id).sort((a,b)=> new Date(a.savedAt||0) - new Date(b.savedAt||0));
+
+    const groups = {};
+    roots.forEach(it=>{
+      const k = categorize((it.style||'') + ' ' + (it.description||''), it.description);
+      (groups[k] = groups[k] || []).push(it);
+    });
+    const cats = Object.keys(groups).sort((a,b)=> groups[b].length - groups[a].length || a.localeCompare(b));
+
+    const matches = (it) => !q || (it.buyer||'').toLowerCase().includes(q) || (it.style||'').toLowerCase().includes(q) || (it.description||'').toLowerCase().includes(q) || (it.planline||'').toLowerCase().includes(q) || (it.revisionLabel||'').toLowerCase().includes(q);
+    const groupMatches = (cat) => groups[cat].some(it => matches(it) || childrenOf(it.id).some(matches));
+
+    const visibleCats = cats.filter(cat => groupMatches(cat) || (!q ? true : cat.toLowerCase().includes(q)));
+
+    if(!visibleCats.length){
+      wrap.innerHTML = '<div class="saved-empty">No results for "' + escHtml($('styles-search').value) + '".</div>';
+      return;
+    }
+
+    wrap.innerHTML = visibleCats.map(cat=>{
+      const styleItems = groups[cat];
+      const openState = q && groupMatches(cat) ? ' open' : '';
+      const rows = styleItems.map(it=>{
+        const isHl = q && matches(it) ? ' hl' : '';
+        return renderRootRow(it, childrenOf(it.id), isHl, matches, q);
+      }).join('');
+      const n = styleItems.length;
+      return `<div class="buyer-group${openState}" data-cat="${escAttr(cat)}">
+        <div class="buyer-group-head">
+          <div class="bg-left"><h3>${escHtml(cat)}</h3></div>
+          <div class="bg-right"><span class="cnt">${n} style${n===1?'':'s'}</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+        <div class="buyer-group-body"><div class="buyer-group-body-inner">${rows}</div></div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.buyer-group-head').forEach(head=>{
+      head.addEventListener('click', ()=>{
+        head.closest('.buyer-group').classList.toggle('open');
+      });
+    });
+
+    wireStyleRowActions(wrap, all, renderStylesList);
+  }
+  $('styles-search').addEventListener('input', renderStylesList);
+
+
+  $('f-style').addEventListener('change', ()=>{
+    const style = $('f-style').value.trim();
+    if(style && sheetSections.length === 0){
+      pushUndo();
+      // friendly default: seed the first section with the typed garment style
+      sheetSections.push({ group: style, rows: [] });
+      renderSections();
+    }
+    schedulePersist();
+  });
+  $('f-style').addEventListener('input', ()=>{ schedulePersist(); });
+
+  // ---------- sketch upload ----------
+  $('sketch-input').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      pushUndo();
+      sketchDataUrl = ev.target.result;
+      renderSketch();
+      schedulePersist();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  $('sketch-box').addEventListener('click', ()=>{
+    if(sketchDataUrl){ openLightbox(sketchDataUrl); }
+    else { $('sketch-input').click(); }
+  });
+
+  function openLightbox(src){
+    $('lightbox-img').src = src;
+    $('lightbox-backdrop').style.display = 'flex';
+  }
+  function closeLightbox(){
+    $('lightbox-backdrop').style.display = 'none';
+  }
+  $('lightbox-close').addEventListener('click', closeLightbox);
+  $('lightbox-backdrop').addEventListener('click', (e)=>{
+    if(e.target.id === 'lightbox-backdrop') closeLightbox();
+  });
+
+  function renderSketch(){
+    const box = $('sketch-box');
+    if(sketchDataUrl){
+      box.innerHTML = `<img src="${sketchDataUrl}" alt="Garment sketch"><button class="sketch-remove no-print" id="sketch-remove" title="Remove">&times;</button><button class="sketch-change no-print" id="sketch-change" title="Change photo">&#9998;</button>`;
+      $('sketch-remove').addEventListener('click',(e)=>{
+        e.stopPropagation();
+        pushUndo();
+        sketchDataUrl = null;
+        renderSketch();
+        schedulePersist();
+      });
+      $('sketch-change').addEventListener('click',(e)=>{
+        e.stopPropagation();
+        $('sketch-input').click();
+      });
+    } else {
+      box.innerHTML = `<div class="ph" id="sketch-ph">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span>Upload sketch<br>or photo</span>
+        </div>`;
+    }
+  }
+
+  // ---------- operation sections ----------
+  function allRows(){
+    return sheetSections.flatMap(sec => sec.rows);
+  }
+
+  function sectionSmv(sec){
+    return sec.rows.reduce((s,r)=>s+(r.smv||0),0);
+  }
+
+  // ---------- Add Section: click a group, it's added immediately (same one-click pattern as Master Sheet) ----------
+  function closeAddSectionModal(){
+    const m = document.getElementById('add-section-modal');
+    if(m) m.remove();
+  }
+
+  function renderAddSectionList(query, available){
+    const q = (query || '').trim().toLowerCase();
+    const filtered = q ? available.filter(s=>s.toLowerCase().includes(q)) : available;
+    if(!available.length) return `<div class="modal-empty">All groups are already added.</div>`;
+    if(!filtered.length) return `<div class="modal-empty">No groups found for "${escHtml(query)}".</div>`;
+    return filtered.map(s=>`
+      <div class="modal-op-row" data-group="${escAttr(s)}">
+        <div class="modal-op-main">
+          <div class="modal-op-name">${escHtml(s)}</div>
+          <div class="modal-op-sub">${masterData[s].length} operations</div>
+        </div>
+        <div class="modal-op-right">
+          <button class="modal-op-add" title="Add section" data-group="${escAttr(s)}">+</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openAddSectionModal(insertAt){
+    closeAddSectionModal();
+    $('add-op-manual-form').style.display = 'none';
+    const already = new Set(sheetSections.map(s=>s.group));
+    const available = styleList().filter(s=>!already.has(s));
+    const hasAnchor = typeof insertAt === 'number';
+    const posNote = hasAnchor
+      ? `Click a group — it'll be inserted right after "${escHtml(sheetSections[insertAt-1] ? sheetSections[insertAt-1].group : '')}".`
+      : `Click a group to add it as a new section.`;
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'add-section-modal';
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-box" style="max-width:520px;">
+        <div class="modal-head">
+          <div>
+            <h3>Add Section</h3>
+            <div class="modal-sub">${posNote}</div>
+          </div>
+          <button class="modal-close" id="add-section-modal-close" title="Close">&times;</button>
+        </div>
+        <div class="modal-search"><input type="text" id="add-section-search" placeholder="Search groups..."></div>
+        <div class="modal-list" id="add-section-modal-list">${renderAddSectionList('', available)}</div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="add-section-modal-done">Close</button></div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    function addAndClose(group){
+      pushUndo();
+      const ops = masterData[group] || [];
+      const at = hasAnchor ? insertAt : sheetSections.length;
+      sheetSections.splice(at, 0, { group: group, rows: ops.map(o=>({op:o.op, mc:o.mc, smv:o.smv})) });
+      closeAddSectionModal();
+      renderSections();
+      schedulePersist();
+      toast(group + ' section added with ' + ops.length + ' operations — remove any you don\'t need');
+    }
+
+    function wireRows(){
+      const list = $('add-section-modal-list');
+      list.querySelectorAll('.modal-op-row').forEach(row=>{
+        row.addEventListener('click', (e)=>{
+          if(e.target.closest('.modal-op-add')) return;
+          addAndClose(row.dataset.group);
+        });
+      });
+      list.querySelectorAll('.modal-op-add').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{ e.stopPropagation(); addAndClose(btn.dataset.group); });
+      });
+    }
+    wireRows();
+
+    $('add-section-search').addEventListener('input', (e)=>{
+      $('add-section-modal-list').innerHTML = renderAddSectionList(e.target.value, available);
+      wireRows();
+    });
+
+    $('add-section-modal-close').addEventListener('click', closeAddSectionModal);
+    $('add-section-modal-done').addEventListener('click', closeAddSectionModal);
+    backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) closeAddSectionModal(); });
+    document.addEventListener('keydown', function escHandler(e){
+      if(e.key === 'Escape'){ closeAddSectionModal(); document.removeEventListener('keydown', escHandler); }
+    });
+    setTimeout(()=>{ const el = $('add-section-search'); if(el) el.focus(); }, 0);
+  }
+
+  $('add-row-btn').addEventListener('click', ()=>{
+    // If an operation row is currently selected in the cost sheet, add the
+    // new section right after that row's own section instead of always
+    // dropping it at the very end of the sheet.
+    const insertAt = (selectedOpRow && sheetSections[selectedOpRow.sec]) ? selectedOpRow.sec + 1 : undefined;
+    openAddSectionModal(insertAt);
+  });
+
+  // ---------- manual "+ Add Operation" (type everything in directly, no picking from Master Data) ----------
+  function openAddOpManualForm(){
+    const form = $('add-op-manual-form');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    if(form.style.display === 'flex') $('aom-name').focus();
+  }
+
+  $('add-op-manual-btn').addEventListener('click', openAddOpManualForm);
+  $('aom-cancel').addEventListener('click', ()=>{ $('add-op-manual-form').style.display = 'none'; });
+
+  // ---------- Master Sheet picker: browse every operation across Master Data, click to add ----------
+  function addOperationFromMaster(group, opObj){
+    pushUndo();
+    let secIdx;
+    if(selectedOpRow && sheetSections[selectedOpRow.sec]){
+      // A specific row is selected as the insertion anchor (e.g. via right-click → "Add operation
+      // from Master Sheet") — always drop the new operation into THAT row's own section, right
+      // below it, no matter which group the operation originally belongs to in Master Data.
+      secIdx = selectedOpRow.sec;
+    } else {
+      secIdx = sheetSections.findIndex(s => s.group === group);
+      if(secIdx === -1){
+        sheetSections.push({ group: group, rows: [] });
+        secIdx = sheetSections.length - 1;
+      }
+    }
+    const sec = sheetSections[secIdx];
+    const insertAt = opInsertIndex(secIdx, sec);
+    sec.rows.splice(insertAt, 0, {op:opObj.op, mc:opObj.mc, smv:opObj.smv});
+    selectedOpRow = {sec:secIdx, row:insertAt};
+    renderSections();
+    schedulePersist();
+    toast('"' + opObj.op + '" added to cost sheet');
+  }
+
+  function closeMasterSheetModal(){
+    const m = document.getElementById('master-sheet-modal');
+    if(m) m.remove();
+  }
+
+  function renderMasterSheetList(query){
+    const q = (query || '').trim().toLowerCase();
+    const groups = styleList();
+    let html = '';
+    let any = false;
+    groups.forEach(g=>{
+      const ops = (masterData[g] || []).filter(o=>{
+        if(!q) return true;
+        return (o.op||'').toLowerCase().includes(q) || g.toLowerCase().includes(q) || (o.mc||'').toLowerCase().includes(q);
+      });
+      if(!ops.length) return;
+      any = true;
+      const img = masterImages[g];
+      html += `<div class="modal-group-label">${escHtml(g)}</div>`;
+      html += `<div class="modal-group-flex">`;
+      html += `<div class="modal-group-rows">`;
+      html += ops.map(o=>{
+        const noSmv = !o.smv;
+        const mcPart = o.mc ? `<span class="mc-tag">${escHtml(o.mc)}</span>` : '';
+        const smvPart = o.smv ? `${o.smv.toFixed(2)} SMV` : (o.mc ? '' : 'No SMV yet');
+        const sub = [mcPart, smvPart].filter(Boolean).join(' &middot; ');
+        return `
+        <div class="modal-op-row${noSmv ? ' no-smv' : ''}" data-group="${escAttr(g)}" data-op="${escAttr(o.op)}">
+          <div class="modal-op-main">
+            <div class="modal-op-name">${escHtml(o.op)}</div>
+            <div class="modal-op-sub">${sub}</div>
+          </div>
+          <div class="modal-op-right">
+            <div class="modal-op-smv-big">${o.smv ? o.smv.toFixed(2) : '—'}</div>
+            <button class="modal-op-add" title="Add to cost sheet" data-group="${escAttr(g)}" data-op="${escAttr(o.op)}">+</button>
+          </div>
+        </div>`;
+      }).join('');
+      html += `</div>`; // .modal-group-rows
+      if(img){
+        html += `<div class="modal-group-thumb no-print"><div class="mgi-box-view" data-group="${escAttr(g)}" title="Click to view image"><img src="${img}" alt="${escAttr(g)} reference"></div></div>`;
+      }
+      html += `</div>`; // .modal-group-flex
+    });
+    if(!any) html = `<div class="modal-empty">No operations found${q ? ' for "' + escHtml(query) + '"' : ' in Master Data yet'}.</div>`;
+    return html;
+  }
+
+  function openMasterSheetModal(){
+    closeMasterSheetModal();
+    const backdrop = document.createElement('div');
+    backdrop.id = 'master-sheet-modal';
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-head">
+          <div>
+            <h3>Master Sheet</h3>
+            <div class="modal-sub">Click any operation to add it straight into the cost sheet</div>
+          </div>
+          <button class="modal-close" id="master-sheet-close" title="Close">&times;</button>
+        </div>
+        <div class="modal-search"><input type="text" id="master-sheet-search" placeholder="Search operation, style or machine..."></div>
+        <div class="modal-list" id="master-sheet-list">${renderMasterSheetList('')}</div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="master-sheet-done">Done</button></div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    function wireRows(){
+      const list = $('master-sheet-list');
+      list.querySelectorAll('.modal-op-row').forEach(row=>{
+        row.addEventListener('click', (e)=>{
+          if(e.target.closest('.modal-op-add')) return; // button handles its own click
+          const group = row.dataset.group, opName = row.dataset.op;
+          const opObj = (masterData[group] || []).find(o=>o.op === opName);
+          if(opObj) addOperationFromMaster(group, opObj);
+        });
+      });
+      list.querySelectorAll('.modal-op-add').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          const group = btn.dataset.group, opName = btn.dataset.op;
+          const opObj = (masterData[group] || []).find(o=>o.op === opName);
+          if(opObj) addOperationFromMaster(group, opObj);
+        });
+      });
+      list.querySelectorAll('.mgi-box-view').forEach(box=>{
+        box.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          const group = box.dataset.group;
+          if(group && masterImages[group]) openLightbox(masterImages[group]);
+        });
+      });
+    }
+    wireRows();
+
+    $('master-sheet-search').addEventListener('input', (e)=>{
+      $('master-sheet-list').innerHTML = renderMasterSheetList(e.target.value);
+      wireRows();
+    });
+    $('master-sheet-search').focus();
+
+    $('master-sheet-close').addEventListener('click', closeMasterSheetModal);
+    $('master-sheet-done').addEventListener('click', closeMasterSheetModal);
+    backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) closeMasterSheetModal(); });
+    document.addEventListener('keydown', function escHandler(e){
+      if(e.key === 'Escape'){ closeMasterSheetModal(); document.removeEventListener('keydown', escHandler); }
+    });
+  }
+
+  $('master-sheet-btn').addEventListener('click', openMasterSheetModal);
+
+  function saveManualOperation(){
+    const name = $('aom-name').value.trim();
+    const machine = $('aom-machine').value.trim();
+    const smv = parseFloat($('aom-smv').value) || 0;
+    if(!name){ toast('Operation name is required'); return; }
+
+    // Figure out which section this goes into, with no section prompt/picker:
+    // 1) if a row is currently selected in the sheet, use that row's section
+    // 2) else reuse the last section already on the sheet
+    // 3) else (brand new sheet) create one default "OTHER OPERATIONS" section
+    let group;
+    let secIdx;
+    if(selectedOpRow && sheetSections[selectedOpRow.sec]){
+      secIdx = selectedOpRow.sec;
+      group = sheetSections[secIdx].group;
+    } else if(sheetSections.length){
+      secIdx = sheetSections.length - 1;
+      group = sheetSections[secIdx].group;
+    } else {
+      group = 'OTHER OPERATIONS';
+      sheetSections.push({group:group, rows:[]});
+      secIdx = sheetSections.length - 1;
+    }
+
+    pushUndo();
+    const sec = sheetSections[secIdx];
+
+    masterData[group] = masterData[group] || [];
+    const dup = masterData[group].find(o=>(o.op||'').toLowerCase() === name.toLowerCase());
+    if(!dup){ masterData[group].push({op:name, mc:machine, smv:smv}); } // keeps Master Data in sync too
+
+    // Insert right after the row currently selected in the cost sheet (same
+    // anchor behaviour as the Master Sheet picker), instead of always
+    // dropping the new operation at the end of the section.
+    const insertAt = opInsertIndex(secIdx, sec);
+    sec.rows.splice(insertAt, 0, {op:name, mc:machine, smv:smv});
+    selectedOpRow = {sec:secIdx, row:insertAt};
+
+    $('aom-name').value=''; $('aom-machine').value=''; $('aom-smv').value='';
+    renderSections();
+    schedulePersist();
+    toast('"' + name + '" added to ' + group);
+
+    // stay open, ready for the next operation to be typed straight in
+    $('aom-name').focus();
+  }
+
+  $('aom-save').addEventListener('click', saveManualOperation);
+  [$('aom-name'), $('aom-machine'), $('aom-smv')].forEach(inp=>{
+    inp.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){ e.preventDefault(); saveManualOperation(); }
+    });
+  });
+
+  $('clear-rows-btn').addEventListener('click', ()=>{
+    if(sheetSections.length && !confirm('Clear all sections and operations?')) return;
+    pushUndo();
+    sheetSections = [];
+    selectedOpRow = null;
+    renderSections();
+    schedulePersist();
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(colorPickerFor && !e.target.closest('.op-color-btn') && !e.target.closest('.op-color-popover')){
+      colorPickerFor = null;
+      renderSections();
+    }
+  });
+
+  // secIdx of the section currently showing its inline "add operation" row, or null
+  let addingRowSecIdx = null;
+  let reopenNewFormForSec = null; // after Enter/Add, which section's "new operation" form should stay open for the next entry
+  let colorPickerFor = null; // {sec, row} of the row whose color popover is open, or null
+  let selectedOpRow = null; // {sec, row} - row clicked in the cost sheet table, insertion anchor for new operations
+  let insertFormAt = null; // {sec, atIdx} - where the right-click "Insert operation" quick-entry row is showing
+  let opClipboard = null; // {data:{op,mc,smv,color}, mode:'copy'|'cut'} - row copied/cut via the context menu
+
+  function opInsertIndex(secIdx, sec){
+    if(selectedOpRow && selectedOpRow.sec === secIdx) return selectedOpRow.row + 1;
+    return sec.rows.length;
+  }
+
+  function renderOpSelBanner(){
+    const banner = $('op-sel-banner');
+    if(selectedOpRow && sheetSections[selectedOpRow.sec] && sheetSections[selectedOpRow.sec].rows[selectedOpRow.row]){
+      const sec = sheetSections[selectedOpRow.sec];
+      const row = sec.rows[selectedOpRow.row];
+      banner.style.display = 'flex';
+      banner.innerHTML = `Selected: <b>${escHtml(row.op || '—')}</b> in ${escHtml(sec.group)} — the next operation added to this section will go right below it. <button id="op-sel-clear">Clear selection</button>`;
+      $('op-sel-clear').addEventListener('click', ()=>{ selectedOpRow = null; renderSections(); });
+    } else {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+    }
+  }
+
+  function renderSections(){
+    const tbody = $('op-rows');
+    tbody.innerHTML = '';
+
+    if(!sheetSections.length){
+      tbody.innerHTML = `<tr><td colspan="6" class="sections-empty">No sections yet — click <b>"+ Add Section"</b> below to pull in an operation group (e.g. BASIC T-SHIRT, COLLAR, SIDE POCKET, PACKING).</td></tr>`;
+      updateTotals();
+      return;
+    }
+
+    let sl = 0;
+    sheetSections.forEach((sec, secIdx)=>{
+      const headTr = document.createElement('tr');
+      headTr.className = 'section-heading';
+      headTr.innerHTML = `<td colspan="6">${escHtml(sec.group)}<span class="section-meta">${sec.rows.length} ops · ${sectionSmv(sec).toFixed(2)} SMV</span><button class="section-remove no-print" data-sec="${secIdx}" title="Remove section">&times;</button></td>`;
+      tbody.appendChild(headTr);
+
+      sec.rows.forEach((row, rowIdx)=>{
+        if(insertFormAt && insertFormAt.sec === secIdx && insertFormAt.atIdx === rowIdx){
+          tbody.appendChild(buildInsertRow(secIdx, rowIdx));
+        }
+        sl++;
+        const target = row.smv > 0 ? Math.round(60/row.smv) : 0;
+        const isBlankOp = !row.mc && !row.smv; // e.g. CHECKING & TRIMMING, PACKING — no machine/SMV set yet
+        const pickerOpen = colorPickerFor && colorPickerFor.sec===secIdx && colorPickerFor.row===rowIdx;
+        const isSelected = selectedOpRow && selectedOpRow.sec===secIdx && selectedOpRow.row===rowIdx;
+        const tr = document.createElement('tr');
+        tr.className = 'op-row-selectable' + (isSelected ? ' op-row-selected' : '');
+        tr.dataset.sec = secIdx;
+        tr.dataset.row = rowIdx;
+        tr.innerHTML = `
+          <td class="sl-cell">${sl}</td>
+          <td><span class="op-name-text ${(!row.color && isBlankOp) ? 'op-heading-text' : ''}" style="${row.color ? 'color:'+row.color+';font-weight:600;' : ''}">${escHtml(row.op || '—')}</span></td>
+          <td>${row.mc ? `<span class="machine-badge">${escHtml(row.mc)}</span>` : ''}</td>
+          <td class="smv-val">${row.smv ? row.smv.toFixed(2) : '—'}</td>
+          <td class="target-val">${target ? target : '—'}</td>
+          <td style="position:relative;white-space:nowrap;">
+            <button class="op-color-btn" data-sec="${secIdx}" data-row="${rowIdx}" title="Change text colour" style="background:${row.color || '#fff'};"></button>
+            <button class="row-del" data-sec="${secIdx}" data-row="${rowIdx}" title="Remove row">&times;</button>
+            ${pickerOpen ? `
+            <div class="op-color-popover" data-sec="${secIdx}" data-row="${rowIdx}">
+              <button class="swatch" data-color="#E2A335" title="Yellow" style="background:#E2A335;"></button>
+              <button class="swatch" data-color="#C1503F" title="Red" style="background:#C1503F;"></button>
+              <button class="swatch" data-color="#0d7a6f" title="Teal" style="background:#0d7a6f;"></button>
+              <button class="swatch" data-color="#2f6fed" title="Blue" style="background:#2f6fed;"></button>
+              <button class="swatch reset" data-color="" title="Reset to default">&times;</button>
+            </div>` : ''}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      if(insertFormAt && insertFormAt.sec === secIdx && insertFormAt.atIdx === sec.rows.length){
+        tbody.appendChild(buildInsertRow(secIdx, sec.rows.length));
+      }
+
+      if(addingRowSecIdx === secIdx){
+        tbody.appendChild(buildInlineAddRow(secIdx));
+      } else {
+        const addTr = document.createElement('tr');
+        addTr.className = 'section-add-row no-print';
+        addTr.innerHTML = `<td colspan="6"><button class="section-add-btn" data-sec="${secIdx}">+ Add operation to ${escHtml(sec.group)}</button></td>`;
+        tbody.appendChild(addTr);
+      }
+    });
+
+    tbody.querySelectorAll('tr.op-row-selectable').forEach(tr=>{
+      tr.addEventListener('click', (e)=>{
+        if(e.target.closest('button')) return; // let delete/color buttons handle their own clicks
+        const secIdx = +tr.dataset.sec, rowIdx = +tr.dataset.row;
+        if(selectedOpRow && selectedOpRow.sec===secIdx && selectedOpRow.row===rowIdx){
+          selectedOpRow = null; // click again to deselect
+        } else {
+          selectedOpRow = {sec:secIdx, row:rowIdx};
+        }
+        renderSections();
+      });
+      tr.addEventListener('contextmenu', (e)=>{
+        e.preventDefault();
+        const secIdx = +tr.dataset.sec, rowIdx = +tr.dataset.row;
+        openOpCtxMenu(e.clientX, e.clientY, secIdx, rowIdx);
+      });
+    });
+    tbody.querySelectorAll('.row-del').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        const secIdx = +e.target.dataset.sec, rowIdx = +e.target.dataset.row;
+        pushUndo();
+        sheetSections[secIdx].rows.splice(rowIdx,1);
+        selectedOpRow = null;
+        renderSections();
+        schedulePersist();
+      });
+    });
+    tbody.querySelectorAll('.op-color-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const secIdx = +btn.dataset.sec, rowIdx = +btn.dataset.row;
+        colorPickerFor = (colorPickerFor && colorPickerFor.sec===secIdx && colorPickerFor.row===rowIdx)
+          ? null : {sec:secIdx, row:rowIdx};
+        renderSections();
+      });
+    });
+    tbody.querySelectorAll('.op-color-popover .swatch').forEach(sw=>{
+      sw.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const pop = sw.closest('.op-color-popover');
+        const secIdx = +pop.dataset.sec, rowIdx = +pop.dataset.row;
+        pushUndo();
+        sheetSections[secIdx].rows[rowIdx].color = sw.dataset.color || null;
+        colorPickerFor = null;
+        renderSections();
+        schedulePersist();
+      });
+    });
+    tbody.querySelectorAll('.section-add-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        addingRowSecIdx = +e.target.dataset.sec;
+        renderSections();
+      });
+    });
+    tbody.querySelectorAll('.section-remove').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        const secIdx = +e.target.dataset.sec;
+        pushUndo();
+        sheetSections.splice(secIdx,1);
+        if(addingRowSecIdx === secIdx) addingRowSecIdx = null;
+        selectedOpRow = null;
+        renderSections();
+        schedulePersist();
+      });
+    });
+
+    renderOpSelBanner();
+    updateTotals();
+  }
+
+  // ---------- right-click context menu on operation rows ----------
+  function closeOpCtxMenu(){
+    const m = document.getElementById('op-ctx-menu');
+    if(m) m.remove();
+  }
+
+  function openOpCtxMenu(x, y, secIdx, rowIdx){
+    closeOpCtxMenu();
+    const menu = document.createElement('div');
+    menu.id = 'op-ctx-menu';
+    menu.className = 'ctx-menu';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.innerHTML = `
+      <button class="ctx-item" data-act="insert-above">Insert operation above</button>
+      <button class="ctx-item" data-act="insert-below">Insert operation below</button>
+      <button class="ctx-item" data-act="add-master">Add operation from Master Sheet</button>
+      <button class="ctx-item" data-act="add-section">Add Section (after this one)</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-act="copy">Copy</button>
+      <button class="ctx-item" data-act="cut">Cut</button>
+      <button class="ctx-item" data-act="paste" ${opClipboard ? '' : 'disabled'}>Paste ${opClipboard ? 'below' : ''}</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item ctx-danger" data-act="delete">Delete</button>
+    `;
+    document.body.appendChild(menu);
+
+    // keep menu on-screen
+    const rect = menu.getBoundingClientRect();
+    if(rect.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+    if(rect.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+
+    menu.querySelectorAll('.ctx-item').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(btn.disabled) return;
+        handleOpCtxAction(btn.dataset.act, secIdx, rowIdx);
+        closeOpCtxMenu();
+      });
+    });
+  }
+
+  document.addEventListener('click', closeOpCtxMenu);
+  document.addEventListener('contextmenu', (e)=>{
+    if(!e.target.closest('tr.op-row-selectable')) closeOpCtxMenu();
+  });
+  document.addEventListener('scroll', closeOpCtxMenu, true);
+  window.addEventListener('resize', closeOpCtxMenu);
+
+  function handleOpCtxAction(act, secIdx, rowIdx){
+    const sec = sheetSections[secIdx];
+    if(!sec) return;
+
+    if(act === 'insert-above' || act === 'insert-below'){
+      addingRowSecIdx = null; // close any other open forms
+      insertFormAt = { sec: secIdx, atIdx: act === 'insert-above' ? rowIdx : rowIdx + 1 };
+      renderSections();
+      return;
+    }
+
+    if(act === 'add-master'){
+      selectedOpRow = { sec: secIdx, row: rowIdx };
+      renderSections();
+      openMasterSheetModal();
+      return;
+    }
+
+    if(act === 'add-section'){
+      openAddSectionModal(secIdx + 1);
+      return;
+    }
+
+    if(act === 'copy' || act === 'cut'){
+      const row = sec.rows[rowIdx];
+      if(!row) return;
+      opClipboard = { data: JSON.parse(JSON.stringify(row)), mode: act };
+      if(act === 'cut'){
+        pushUndo();
+        sec.rows.splice(rowIdx, 1);
+        if(selectedOpRow && selectedOpRow.sec === secIdx && selectedOpRow.row === rowIdx) selectedOpRow = null;
+        renderSections();
+        schedulePersist();
+      }
+      toast(act === 'copy' ? 'Operation copied' : 'Operation cut — right-click a row and choose Paste');
+      return;
+    }
+
+    if(act === 'paste'){
+      if(!opClipboard) return;
+      pushUndo();
+      const insertAt = rowIdx + 1;
+      sec.rows.splice(insertAt, 0, JSON.parse(JSON.stringify(opClipboard.data)));
+      renderSections();
+      schedulePersist();
+      toast('Operation pasted');
+      return;
+    }
+
+    if(act === 'delete'){
+      pushUndo();
+      sec.rows.splice(rowIdx, 1);
+      if(selectedOpRow && selectedOpRow.sec === secIdx && selectedOpRow.row === rowIdx) selectedOpRow = null;
+      renderSections();
+      schedulePersist();
+      toast('Operation removed');
+    }
+  }
+
+  // ---------- quick "Insert operation" row, opened from the right-click menu ----------
+  // Lets the user type any operation directly at that exact position — it does NOT
+  // have to already exist in Master Data.
+  function buildInsertRow(secIdx, atIdx){
+    const tr = document.createElement('tr');
+    tr.className = 'op-insert-inline no-print';
+    tr.innerHTML = `
+      <td class="sl-cell">+</td>
+      <td colspan="4">
+        <div class="inline-add-newform" style="display:flex;">
+          <input type="text" class="iaf-name" placeholder="Operation name">
+          <input type="text" class="iaf-mc" placeholder="Machine">
+          <input type="number" class="iaf-smv" step="0.01" min="0" placeholder="SMV">
+          <button class="btn btn-primary btn-sm iaf-save" type="button">Insert</button>
+        </div>
+      </td>
+      <td><button class="row-del inline-add-cancel" type="button" title="Close">&times;</button></td>
+    `;
+
+    const save = ()=>{
+      const name = tr.querySelector('.iaf-name').value.trim();
+      const machine = tr.querySelector('.iaf-mc').value.trim();
+      const smv = parseFloat(tr.querySelector('.iaf-smv').value) || 0;
+      if(!name){ toast('Operation name required'); return; }
+      pushUndo();
+      sheetSections[secIdx].rows.splice(atIdx, 0, {op:name, mc:machine, smv:smv});
+      insertFormAt = null;
+      renderSections();
+      schedulePersist();
+      toast('"' + name + '" inserted');
+    };
+
+    tr.querySelector('.iaf-save').addEventListener('click', save);
+    tr.querySelector('.iaf-name').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') save(); });
+    tr.querySelector('.iaf-mc').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') save(); });
+    tr.querySelector('.iaf-smv').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') save(); });
+    tr.querySelector('.inline-add-cancel').addEventListener('click', ()=>{
+      insertFormAt = null;
+      renderSections();
+    });
+
+    setTimeout(()=>{ const el = tr.querySelector('.iaf-name'); if(el) el.focus(); }, 0);
+    return tr;
+  }
+
+  // ---------- inline "add operation" row (opens directly in the table, no popup) ----------
+  function buildInlineAddRow(secIdx){
+    const sec = sheetSections[secIdx];
+    const allOps = masterData[sec.group] || [];
+    const already = new Set(sec.rows.map(r=>r.op));
+    const avail = allOps.filter(o=>!already.has(o.op));
+
+    const tr = document.createElement('tr');
+    tr.className = 'op-add-inline no-print';
+    tr.innerHTML = `
+      <td class="sl-cell">+</td>
+      <td colspan="4">
+        <select class="inline-add-select">
+          <option value="">${avail.length ? 'Select from Master Data...' : 'No more Master Data ops for this group'}</option>
+          ${avail.map(o=>`<option value="${escAttr(o.op)}">${escHtml(o.op)}${o.mc ? ' — '+escHtml(o.mc) : ''}${o.smv ? ' ('+o.smv.toFixed(2)+')' : ''}</option>`).join('')}
+        </select>
+        <button class="inline-add-newtoggle" type="button">+ New operation not in Master Data</button>
+        <div class="inline-add-newform" style="display:none;">
+          <input type="text" class="iaf-name" placeholder="Operation name">
+          <input type="text" class="iaf-mc" placeholder="Machine">
+          <input type="number" class="iaf-smv" step="0.01" min="0" placeholder="SMV">
+          <button class="btn btn-primary btn-sm iaf-save" type="button">Add</button>
+        </div>
+      </td>
+      <td><button class="row-del inline-add-cancel" type="button" title="Close">&times;</button></td>
+    `;
+
+    tr.querySelector('.inline-add-select').addEventListener('change', (e)=>{
+      const chosen = allOps.find(o=>o.op === e.target.value);
+      if(!chosen) return;
+      pushUndo();
+      const insertAt = opInsertIndex(secIdx, sec);
+      sec.rows.splice(insertAt, 0, {op:chosen.op, mc:chosen.mc, smv:chosen.smv});
+      if(selectedOpRow && selectedOpRow.sec === secIdx) selectedOpRow = {sec:secIdx, row:insertAt};
+      renderSections();
+      schedulePersist();
+    });
+
+    tr.querySelector('.inline-add-newtoggle').addEventListener('click', ()=>{
+      const form = tr.querySelector('.inline-add-newform');
+      form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+      if(form.style.display === 'flex') tr.querySelector('.iaf-name').focus();
+    });
+
+    const saveNewOp = ()=>{
+      const name = tr.querySelector('.iaf-name').value.trim();
+      const machine = tr.querySelector('.iaf-mc').value.trim();
+      const smv = parseFloat(tr.querySelector('.iaf-smv').value) || 0;
+      if(!name){ toast('Operation name required'); return; }
+
+      masterData[sec.group] = masterData[sec.group] || [];
+      const dup = masterData[sec.group].find(o=>(o.op||'').toLowerCase() === name.toLowerCase());
+      if(dup){ toast('That operation already exists in Master Data for ' + sec.group); return; }
+
+      pushUndo();
+      const newOp = {op:name, mc:machine, smv:smv};
+      masterData[sec.group].push(newOp); // goes into the full Master Sheet
+      const insertAt = opInsertIndex(secIdx, sec);
+      sec.rows.splice(insertAt, 0, {op:newOp.op, mc:newOp.mc, smv:newOp.smv}); // and into this section right away
+      if(selectedOpRow && selectedOpRow.sec === secIdx) selectedOpRow = {sec:secIdx, row:insertAt};
+
+      // keep the "new operation" form open (cleared, focused) so the next operation
+      // can be typed straight away without re-clicking "+ New operation not in Master Data"
+      reopenNewFormForSec = secIdx;
+
+      renderSections();
+      schedulePersist();
+      toast('"' + name + '" added to Master Data (' + sec.group + ') and this section');
+    };
+
+    tr.querySelector('.iaf-save').addEventListener('click', saveNewOp);
+    tr.querySelector('.iaf-name').addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); saveNewOp(); } });
+    tr.querySelector('.iaf-mc').addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); saveNewOp(); } });
+    tr.querySelector('.iaf-smv').addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); saveNewOp(); } });
+
+    tr.querySelector('.inline-add-cancel').addEventListener('click', ()=>{
+      addingRowSecIdx = null;
+      reopenNewFormForSec = null;
+      renderSections();
+    });
+
+    // if we just added an operation in this section via Enter/Add, reopen the
+    // blank "new operation" form immediately so the user can keep typing
+    if(reopenNewFormForSec === secIdx){
+      reopenNewFormForSec = null;
+      const form = tr.querySelector('.inline-add-newform');
+      form.style.display = 'flex';
+      setTimeout(()=>{ const el = tr.querySelector('.iaf-name'); if(el) el.focus(); }, 0);
+    }
+
+    return tr;
+  }
+
+  function updateTotals(){
+    const rows = allRows();
+    const totalSmv = rows.reduce((s,r)=>s + (r.smv||0), 0);
+    $('total-smv').textContent = totalSmv.toFixed(2);
+    $('total-ops').textContent = rows.length;
+
+    // machine mix chips
+    const mix = {};
+    rows.forEach(r=>{ if(r.mc){ mix[r.mc] = (mix[r.mc]||0)+1; } });
+    const mixWrap = $('machine-mix');
+    const entries = Object.entries(mix).sort((a,b)=>b[1]-a[1]);
+    mixWrap.innerHTML = entries.length ? entries.map(([mc,ct])=>
+      `<div class="mix-chip">${escHtml(mc)} <b>&times;${ct}</b></div>`
+    ).join('') : '';
+
+    renderSummary(totalSmv, rows);
+  }
+
+  function renderSummary(totalSmv, rows){
+    const orderEff = parseFloat($('f-ordereff').value) || 0;
+    const overallTarget = totalSmv > 0 ? (60/totalSmv) : 0;
+
+    const cells = [
+      { label:'Total SMV', value: totalSmv.toFixed(2), accent:true },
+      { label:'Operations', value: rows.length },
+      { label:'Garment Output /hr', value: overallTarget ? Math.round(overallTarget) : '—' },
+      { label:'Order Eff %', value: orderEff ? orderEff+'%' : '—' },
+    ];
+    $('summary-strip').innerHTML = cells.map(c=>`
+      <div class="summary-cell ${c.accent?'accent':''}">
+        <div class="summary-label">${c.label}</div>
+        <div class="summary-value">${c.value}</div>
+      </div>
+    `).join('');
+  }
+
+  ['f-ordereff','f-buyer','f-description','f-planline','f-orderqty','f-leadtime','f-madeby'].forEach(id=>{
+    $(id).addEventListener('input', ()=>{ updateTotals(); schedulePersist(); });
+  });
+
+  // ---------- Excel export (styled .xlsx download: colored headers, borders, alignment) ----------
+  const XLC = {
+    navy: 'FF0B2340', teal: 'FF16A394', amber: 'FFE2A335',
+    yellow: 'FFFFF200', white: 'FFFFFFFF', ink: 'FF1B2430', line: 'FFB9C2CC', paper: 'FFF6F3EC'
+  };
+  const thinBorder = { style:'thin', color:{ rgb: XLC.line } };
+  const boxAll = { top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder };
+  function styleCell(ws, ref, opts){
+    if(!ws[ref]) ws[ref] = { t:'s', v:'' };
+    ws[ref].s = Object.assign({
+      font: { name:'Calibri', sz: opts.sz||11, bold: !!opts.bold, color:{ rgb: opts.color||XLC.ink } },
+      fill: opts.fill ? { patternType:'solid', fgColor:{ rgb: opts.fill } } : undefined,
+      alignment: { horizontal: opts.h||'left', vertical:'center', wrapText: !!opts.wrap },
+      border: boxAll
+    }, opts.extra||{});
+  }
+
+  $('export-excel-btn').addEventListener('click', ()=>{
+    if(typeof XLSX === 'undefined'){
+      toast('Excel library did not load — check your internet connection and try again');
+      return;
+    }
+    const style = $('f-style').value || '';
+    const totalSmvVal = allRows().reduce((s,r)=>s+(r.smv||0),0);
+    const totalOpsVal = allRows().length;
+
+    // ---- build the raw grid first (row-by-row), same 6 columns as the on-screen table ----
+    const aoa = [
+      ['COST SHEET FOR OPERATION BREAKDOWN','','','','',''],
+      ['BUYER', $('f-buyer').value, 'PLAN LINE', $('f-planline').value, 'TOTAL SMV', totalSmvVal.toFixed(2)],
+      ['STYLE NO', style, 'ORDER QTY', $('f-orderqty').value, 'ORDER EFF %', $('f-ordereff').value ? $('f-ordereff').value+'%' : ''],
+      ['DESCRIPTION', $('f-description').value, 'MADE BY', $('f-madeby').value, 'LEAD TIME (DAYS)', $('f-leadtime').value],
+      ['','','','','',''],
+      ['SL','STYLE','OPERATION NAME','MACHINE TYPE','SMV','TARGET/HR'],
+    ];
+    const dataStartRow = aoa.length; // 0-indexed row where operation rows begin
+    let sl = 0;
+    const noSmvRowIdx = []; // 0-indexed row numbers (within aoa) that should get the yellow highlight
+    sheetSections.forEach(sec=>{
+      sec.rows.forEach(r=>{
+        sl++;
+        const hasSmv = !!r.smv;
+        aoa.push([sl, sec.group, r.op, r.mc || '—', hasSmv ? r.smv : '', hasSmv ? Math.round(60/r.smv) : '']);
+        if(!hasSmv) noSmvRowIdx.push(aoa.length - 1);
+      });
+    });
+    aoa.push(['','','','','','']);
+    const totalRowIdx = aoa.length;
+    aoa.push(['','','TOTAL SMV (SEW TO PACK)','',totalSmvVal.toFixed(2),'']);
+    const opsRowIdx = aoa.length;
+    aoa.push(['','','TOTAL OPERATIONS','',totalOpsVal,'']);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const lastCol = 5; // 0-indexed, column F
+    const lastRow = aoa.length - 1;
+
+    // ---- title row: merged, navy fill, white bold, centered ----
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];
+    for(let c=0;c<=lastCol;c++){
+      const ref = XLSX.utils.encode_cell({r:0,c:c});
+      styleCell(ws, ref, { bold:true, sz:15, color:XLC.white, fill:XLC.navy, h:'center' });
+    }
+
+    // ---- info grid rows (1,2,3): label/value pairs alternating navy & teal labels ----
+    [1,2,3].forEach(r=>{
+      [0,2,4].forEach(labelCol=>{
+        const labelRef = XLSX.utils.encode_cell({r,c:labelCol});
+        const valueRef = XLSX.utils.encode_cell({r,c:labelCol+1});
+        const labelFill = labelCol === 2 ? XLC.teal : XLC.navy;
+        styleCell(ws, labelRef, { bold:true, sz:10.5, color:XLC.white, fill:labelFill, h:'left' });
+        const isTotalSmv = (r===1 && labelCol===4);
+        styleCell(ws, valueRef, { bold:isTotalSmv, sz:11, color:isTotalSmv?XLC.amber:XLC.ink, fill:XLC.white, h:isTotalSmv?'center':'left' });
+      });
+    });
+    // blank spacer row 4 — no border/fill needed, leave as-is
+    for(let c=0;c<=lastCol;c++){
+      ws[XLSX.utils.encode_cell({r:4,c})] = { t:'s', v:'' };
+    }
+
+    // ---- table header row: teal fill, white bold, centered ----
+    for(let c=0;c<=lastCol;c++){
+      const ref = XLSX.utils.encode_cell({r:5,c});
+      styleCell(ws, ref, { bold:true, sz:11, color:XLC.white, fill:XLC.teal, h:'center' });
+    }
+
+    // ---- operation data rows ----
+    for(let r=dataStartRow; r<totalRowIdx-1; r++){
+      const isNoSmv = noSmvRowIdx.includes(r);
+      for(let c=0;c<=lastCol;c++){
+        const ref = XLSX.utils.encode_cell({r,c});
+        const align = (c===2) ? 'left' : 'center';
+        styleCell(ws, ref, {
+          bold: isNoSmv,
+          sz: 10.5,
+          color: XLC.ink,
+          fill: isNoSmv ? XLC.yellow : XLC.white,
+          h: align
+        });
+      }
+    }
+
+    // ---- totals rows ----
+    ws['!merges'].push({ s:{r:totalRowIdx,c:2}, e:{r:totalRowIdx,c:3} });
+    ws['!merges'].push({ s:{r:opsRowIdx,c:2}, e:{r:opsRowIdx,c:3} });
+    [totalRowIdx, opsRowIdx].forEach(r=>{
+      for(let c=0;c<=lastCol;c++){
+        const ref = XLSX.utils.encode_cell({r,c});
+        const isLabel = (c===2 || c===3);
+        const isValue = (c===4);
+        styleCell(ws, ref, {
+          bold:true, sz:11,
+          color: isValue ? XLC.amber : XLC.white,
+          fill: (isLabel || isValue) ? XLC.navy : undefined,
+          h: isLabel ? 'left' : 'center'
+        });
+      }
+    });
+
+    ws['!cols'] = [{wch:6},{wch:17},{wch:42},{wch:15},{wch:9},{wch:11}];
+    ws['!rows'] = aoa.map((_,i)=> i===0 ? {hpx:24} : {hpx:19});
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cost Sheet');
+    const filename = (style || 'cost-sheet').replace(/[^a-z0-9]+/gi,'_') + '_operation_bulletin.xlsx';
+    XLSX.writeFile(wb, filename);
+    toast('Excel file downloaded');
+  });
+
+  // ---------- PDF export (direct .pdf download, no print dialog) ----------
+  $('save-pdf-btn').addEventListener('click', ()=>{
+    if(typeof html2pdf === 'undefined'){
+      toast('PDF library did not load — check your internet connection and try again');
+      return;
+    }
+    const style = $('f-style').value || '';
+    const filename = (style || 'cost-sheet').replace(/[^a-z0-9]+/gi,'_') + '_operation_bulletin.pdf';
+    const target = document.getElementById('panel-costsheet');
+    document.body.classList.add('pdf-mode');
+    toast('Preparing PDF…');
+    html2pdf().set({
+      margin: 8,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: target.scrollWidth, windowHeight: target.scrollHeight },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css','avoid-all'] }
+    }).from(target).save().then(()=>{
+      document.body.classList.remove('pdf-mode');
+      toast('PDF downloaded');
+    }).catch((err)=>{
+      document.body.classList.remove('pdf-mode');
+      console.error(err);
+      toast('PDF export failed — please try again');
+    });
+  });
+
+  // ---------- Master data tab ----------
+  function renderStylePills(){
+    const wrap = $('md-style-pills');
+    wrap.classList.toggle('expanded', pillsExpanded);
+    const styles = styleList();
+    wrap.innerHTML = `<div class="style-pill ${mdSelectedStyle===null?'active':''}" data-style="">All Styles</div>` +
+      styles.map(s=>`<div class="style-pill ${mdSelectedStyle===s?'active':''}" data-style="${escAttr(s)}">${escHtml(s)} <span style="opacity:.55">(${masterData[s].length})</span></div>`).join('');
+    wrap.querySelectorAll('.style-pill').forEach(p=>{
+      p.addEventListener('click', ()=>{
+        mdSelectedStyle = p.dataset.style || null;
+        renderMdRows();
+        wrap.querySelectorAll('.style-pill').forEach(x=>x.classList.remove('active'));
+        p.classList.add('active');
+      });
+      if(p.dataset.style){
+        p.addEventListener('contextmenu', (e)=>{
+          e.preventDefault();
+          openMdGroupCtxMenu(e.clientX, e.clientY, p.dataset.style);
+        });
+      }
+    });
+    const toggleBtn = $('style-pills-toggle');
+    toggleBtn.textContent = pillsExpanded ? 'Show less ▴' : `Show all ${styles.length} styles ▾`;
+  }
+
+  $('style-pills-toggle').addEventListener('click', ()=>{
+    pillsExpanded = !pillsExpanded;
+    renderStylePills();
+  });
+
+  function renderMdRows(){
+    const q = ($('md-search-input').value || '').trim().toLowerCase();
+    const wrap = $('md-groups-wrap');
+    const styles = mdSelectedStyle ? [mdSelectedStyle] : styleList();
+    let anyShown = false;
+
+    wrap.innerHTML = styles.map(s=>{
+      const ops = (masterData[s]||[]).map((o,i)=>({...o, idx:i}))
+        .filter(o => !q || (o.op||'').toLowerCase().includes(q) || s.toLowerCase().includes(q) || (o.mc||'').toLowerCase().includes(q));
+      if(!ops.length) return '';
+      anyShown = true;
+      const img = masterImages[s];
+      const rows = ops.map(o=>{
+        const isSel = mdSelectedRow && mdSelectedRow.style===s && mdSelectedRow.idx===o.idx;
+        const isHeadingOp = !o.mc && !o.smv; // e.g. CHECKING & TRIMMING, PACKING — acts as a heading for the ops below it
+        const canEdit = !currentUser || currentUser.admin || currentUser.permSmv;
+        const isEditing = canEdit && mdEditingRow && mdEditingRow.style===s && mdEditingRow.idx===o.idx;
+
+        if(isEditing){
+          return `
+          <tr class="md-rows-row editing" data-style="${escAttr(s)}" data-idx="${o.idx}">
+            <td><input type="text" class="md-edit-input md-edit-op" value="${escAttr(o.op)}"></td>
+            <td><input type="text" class="md-edit-input md-edit-mc" value="${escAttr(o.mc||'')}" placeholder="Machine"></td>
+            <td><input type="number" step="0.01" min="0" class="md-edit-input md-edit-smv" value="${o.smv||''}" placeholder="SMV"></td>
+            <td class="md-edit-actions">
+              <button class="row-save no-print" data-style="${escAttr(s)}" data-idx="${o.idx}" title="Save">&#10003;</button>
+              <button class="row-cancel no-print" data-style="${escAttr(s)}" data-idx="${o.idx}" title="Cancel">&times;</button>
+            </td>
+          </tr>`;
+        }
+        return `
+        <tr class="md-rows-row ${isSel?'selected':''}" data-style="${escAttr(s)}" data-idx="${o.idx}">
+          <td><span class="${isHeadingOp ? 'op-heading-text' : ''}">${escHtml(o.op)}</span></td>
+          <td>${o.mc ? `<span class="machine-badge">${escHtml(o.mc)}</span>` : ''}</td>
+          <td class="smv-val">${o.smv ? o.smv.toFixed(2) : '—'}</td>
+          <td class="md-row-actions">
+            ${canEdit ? `<button class="row-edit no-print" data-style="${escAttr(s)}" data-idx="${o.idx}" title="Edit">&#9998;</button>` : ''}
+            ${(!currentUser || currentUser.admin || currentUser.permDelete) ? `<button class="row-del no-print" data-style="${escAttr(s)}" data-idx="${o.idx}" title="Delete">&times;</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+      return `
+      <div class="md-group" data-group="${escAttr(s)}">
+        <div class="md-group-head" data-group="${escAttr(s)}" title="Right-click for Rename / Delete">
+          <h4>${escHtml(s)}</h4>
+          <span class="mgh-cnt">${ops.length} operation${ops.length===1?'':'s'}</span>
+        </div>
+        <div class="md-group-body">
+          <div class="md-group-table-wrap">
+            <table class="optbl-compact">
+              <thead><tr><th style="min-width:170px;">Operation Name</th><th>Machine</th><th>SMV</th><th></th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div class="md-group-image no-print">
+            <div class="mgi-box" data-group="${escAttr(s)}" title="${img ? 'Click to view image' : 'Click to add a reference image'}">
+              ${img
+                ? `<img src="${img}" alt="${escAttr(s)} reference">`
+                : `<div class="mgi-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>Add image</span></div>`
+              }
+              ${img ? `<button class="mgi-change" data-group="${escAttr(s)}" title="Change image">&#9998;</button><button class="mgi-remove" data-group="${escAttr(s)}" title="Remove image">&times;</button>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('md-empty').style.display = anyShown ? 'none' : 'block';
+
+    wrap.querySelectorAll('.md-rows-row').forEach(tr=>{
+      tr.addEventListener('click', (e)=>{
+        if(e.target.closest('.row-del') || e.target.closest('.row-edit') || e.target.closest('.row-save') || e.target.closest('.row-cancel') || tr.classList.contains('editing')) return;
+        const s = tr.dataset.style, i = +tr.dataset.idx;
+        if(mdSelectedRow && mdSelectedRow.style===s && mdSelectedRow.idx===i){
+          mdSelectedRow = null; // click again to deselect
+        } else {
+          mdSelectedRow = {style:s, idx:i};
+        }
+        renderMdRows();
+        renderSelBanner();
+      });
+    });
+    wrap.querySelectorAll('.row-edit').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        mdEditingRow = {style: btn.dataset.style, idx: +btn.dataset.idx};
+        renderMdRows();
+      });
+    });
+    wrap.querySelectorAll('.row-cancel').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        mdEditingRow = null;
+        renderMdRows();
+      });
+    });
+    wrap.querySelectorAll('.row-save').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const s = btn.dataset.style, i = +btn.dataset.idx;
+        const tr = btn.closest('tr');
+        const newOp = tr.querySelector('.md-edit-op').value.trim();
+        const newMc = tr.querySelector('.md-edit-mc').value.trim();
+        const newSmv = parseFloat(tr.querySelector('.md-edit-smv').value);
+        if(!newOp){ toast('Operation name is required'); return; }
+        pushUndo();
+        masterData[s][i] = {op: newOp, mc: newMc, smv: isNaN(newSmv) ? 0 : newSmv};
+        mdEditingRow = null;
+        renderMdRows();
+        renderStylePills();
+        renderSelBanner();
+        schedulePersist();
+        toast('Operation updated');
+      });
+    });
+    wrap.querySelectorAll('.row-del').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const s = e.target.dataset.style, i = +e.target.dataset.idx;
+        pushUndo();
+        masterData[s].splice(i,1);
+        if(mdSelectedRow && mdSelectedRow.style===s && mdSelectedRow.idx===i) mdSelectedRow = null;
+        renderMdRows();
+        renderStylePills();
+        renderSelBanner();
+        schedulePersist();
+        toast('Operation removed');
+      });
+    });
+
+    // reference image upload / view / change / remove, per style group
+    wrap.querySelectorAll('.mgi-box').forEach(box=>{
+      box.addEventListener('click', (e)=>{
+        if(e.target.closest('.mgi-remove') || e.target.closest('.mgi-change')) return;
+        const group = box.dataset.group;
+        if(masterImages[group]){
+          openLightbox(masterImages[group]);
+        } else {
+          mdImageUploadTarget = group;
+          $('md-image-input').click();
+        }
+      });
+    });
+    wrap.querySelectorAll('.mgi-change').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        mdImageUploadTarget = btn.dataset.group;
+        $('md-image-input').click();
+      });
+    });
+    wrap.querySelectorAll('.mgi-remove').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const group = btn.dataset.group;
+        delete masterImages[group];
+        renderMdRows();
+        schedulePersist();
+        toast('Image removed');
+      });
+    });
+
+    wrap.querySelectorAll('.md-group-head').forEach(head=>{
+      head.addEventListener('contextmenu', (e)=>{
+        e.preventDefault();
+        openMdGroupCtxMenu(e.clientX, e.clientY, head.dataset.group);
+      });
+    });
+  }
+
+  $('md-image-input').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if(!file || !mdImageUploadTarget) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      masterImages[mdImageUploadTarget] = ev.target.result;
+      mdImageUploadTarget = null;
+      renderMdRows();
+      schedulePersist();
+      toast('Image added');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ---------- right-click context menu on a Master Data style group (pill or header) ----------
+  function closeMdGroupCtxMenu(){
+    const m = document.getElementById('md-group-ctx-menu');
+    if(m) m.remove();
+  }
+
+  function openMdGroupCtxMenu(x, y, styleName){
+    closeMdGroupCtxMenu();
+    const canManage = !currentUser || currentUser.admin || currentUser.permDelete;
+    const menu = document.createElement('div');
+    menu.id = 'md-group-ctx-menu';
+    menu.className = 'ctx-menu';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.innerHTML = `
+      <button class="ctx-item" data-act="rename" ${canManage ? '' : 'disabled'}>Rename "${escHtml(styleName)}"</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item ctx-danger" data-act="delete" ${canManage ? '' : 'disabled'}>Delete "${escHtml(styleName)}"</button>
+    `;
+    document.body.appendChild(menu);
+
+    // keep menu on-screen
+    const rect = menu.getBoundingClientRect();
+    if(rect.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+    if(rect.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+
+    menu.querySelectorAll('.ctx-item').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(btn.disabled) return;
+        handleMdGroupCtxAction(btn.dataset.act, styleName);
+        closeMdGroupCtxMenu();
+      });
+    });
+  }
+
+  document.addEventListener('click', closeMdGroupCtxMenu);
+  document.addEventListener('contextmenu', (e)=>{
+    if(!e.target.closest('.md-group-head') && !e.target.closest('.style-pill')) closeMdGroupCtxMenu();
+  });
+  document.addEventListener('scroll', closeMdGroupCtxMenu, true);
+  window.addEventListener('resize', closeMdGroupCtxMenu);
+
+  function handleMdGroupCtxAction(act, styleName){
+    if(!masterData[styleName]){ toast('That style no longer exists'); return; }
+
+    if(act === 'rename'){
+      const next = prompt('Rename "' + styleName + '" to:', styleName);
+      if(next === null) return;
+      const trimmed = next.trim();
+      if(!trimmed){ toast('Style name is required'); return; }
+      if(trimmed === styleName) return;
+      if(masterData[trimmed]){ toast('A style named "' + trimmed + '" already exists'); return; }
+      pushUndo();
+      masterData[trimmed] = masterData[styleName];
+      delete masterData[styleName];
+      if(masterImages[styleName] !== undefined){
+        masterImages[trimmed] = masterImages[styleName];
+        delete masterImages[styleName];
+      }
+      if(mdSelectedStyle === styleName) mdSelectedStyle = trimmed;
+      if(mdSelectedRow && mdSelectedRow.style === styleName) mdSelectedRow = {style:trimmed, idx:mdSelectedRow.idx};
+      if(mdEditingRow && mdEditingRow.style === styleName) mdEditingRow = {style:trimmed, idx:mdEditingRow.idx};
+      renderStylePills();
+      renderMdRows();
+      renderSelBanner();
+      schedulePersist();
+      toast('Renamed to "' + trimmed + '"');
+      return;
+    }
+
+    if(act === 'delete'){
+      const n = masterData[styleName].length;
+      if(!confirm('Delete "' + styleName + '" and all ' + n + ' operation' + (n===1?'':'s') + ' under it? This cannot be undone.')) return;
+      pushUndo();
+      delete masterData[styleName];
+      delete masterImages[styleName];
+      if(mdSelectedStyle === styleName) mdSelectedStyle = null;
+      if(mdSelectedRow && mdSelectedRow.style === styleName) mdSelectedRow = null;
+      if(mdEditingRow && mdEditingRow.style === styleName) mdEditingRow = null;
+      renderStylePills();
+      renderMdRows();
+      renderSelBanner();
+      schedulePersist();
+      toast('Deleted "' + styleName + '"');
+    }
+  }
+
+  function renderSelBanner(){
+    const banner = $('sel-banner');
+    if(mdSelectedRow && masterData[mdSelectedRow.style] && masterData[mdSelectedRow.style][mdSelectedRow.idx]){
+      const op = masterData[mdSelectedRow.style][mdSelectedRow.idx];
+      banner.style.display = 'flex';
+      banner.innerHTML = `Selected: <b>${escHtml(op.op)}</b> in ${escHtml(mdSelectedRow.style)} — "Add Operation" will insert right after this. <button id="sel-clear">Clear selection</button>`;
+      $('sel-clear').addEventListener('click', ()=>{ mdSelectedRow = null; renderMdRows(); renderSelBanner(); });
+    } else {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+    }
+  }
+
+  $('md-search-input').addEventListener('input', renderMdRows);
+
+  $('md-add-toggle').addEventListener('click', ()=>{
+    $('create-op-form').style.display = 'none';
+    const form = $('add-op-form');
+    form.style.display = form.style.display === 'none' ? 'grid' : 'none';
+    if(form.style.display === 'grid'){
+      const sel = $('new-op-style');
+      sel.innerHTML = styleList().map(s=>`<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('') + `<option value="__new__">+ New style...</option>`;
+      if(mdSelectedRow){
+        sel.value = mdSelectedRow.style;
+        sel.disabled = true;
+      } else {
+        sel.disabled = false;
+      }
+      $('new-op-name').focus();
+    }
+  });
+
+  $('new-op-save').addEventListener('click', ()=>{
+    let style = $('new-op-style').value;
+    if(style === '__new__'){
+      style = prompt('New style name:');
+      if(!style) return;
+      style = style.trim().toUpperCase();
+      if(!masterData[style]) masterData[style] = [];
+    }
+    const name = $('new-op-name').value.trim();
+    const machine = $('new-op-machine').value.trim();
+    const smv = parseFloat($('new-op-smv').value) || 0;
+    if(!style || !name){ toast('Style and operation name required'); return; }
+    pushUndo();
+    masterData[style] = masterData[style] || [];
+    const newOp = {op:name, mc:machine, smv:smv};
+
+    if(mdSelectedRow && mdSelectedRow.style === style && masterData[style][mdSelectedRow.idx]){
+      masterData[style].splice(mdSelectedRow.idx + 1, 0, newOp);
+      mdSelectedRow = {style: style, idx: mdSelectedRow.idx + 1}; // keep selection on the new row
+    } else {
+      masterData[style].push(newOp);
+    }
+
+    $('new-op-name').value=''; $('new-op-machine').value=''; $('new-op-smv').value='';
+    renderStylePills();
+    renderMdRows();
+    renderSelBanner();
+    renderSections();
+    schedulePersist();
+    toast('Operation added' + (mdSelectedRow ? ' after selected row' : ''));
+  });
+
+  // ---------- Create Operation: build a brand-new style/group with one or more operation rows, saved together ----------
+  let createOpRowSeq = 0;
+  function createOpRowHtml(){
+    const id = 'cor' + (createOpRowSeq++);
+    return `
+      <div class="create-op-row" data-rowid="${id}">
+        <input type="text" class="cor-name" placeholder="Operation name e.g. POCKET BAG ATTACH">
+        <input type="text" class="cor-mc" placeholder="Machine e.g. O/L">
+        <input type="number" class="cor-smv" step="0.01" min="0" placeholder="SMV">
+        <button type="button" class="cor-remove" title="Remove this operation">&times;</button>
+      </div>`;
+  }
+  function wireCreateOpRow(row){
+    row.querySelector('.cor-remove').addEventListener('click', ()=>{
+      const rows = $('create-op-rows').querySelectorAll('.create-op-row');
+      if(rows.length <= 1){ toast('At least one operation row is needed'); return; }
+      row.remove();
+    });
+  }
+  function addCreateOpRow(focus){
+    const wrap = $('create-op-rows');
+    wrap.insertAdjacentHTML('beforeend', createOpRowHtml());
+    const rows = wrap.querySelectorAll('.create-op-row');
+    const last = rows[rows.length - 1];
+    wireCreateOpRow(last);
+    if(focus) last.querySelector('.cor-name').focus();
+  }
+  function resetCreateOpForm(){
+    $('create-op-group').value = '';
+    $('create-op-rows').innerHTML = '';
+    addCreateOpRow(false);
+  }
+
+  // Pressing Enter in any field of a row (name/machine/SMV) adds a fresh
+  // blank operation row and focuses it — lets you type out a whole style's
+  // operations quickly without reaching for "+ Add another operation" each time.
+  $('create-op-rows').addEventListener('keydown', (e)=>{
+    if(e.key !== 'Enter') return;
+    if(!e.target.matches('.cor-name, .cor-mc, .cor-smv')) return;
+    e.preventDefault();
+    addCreateOpRow(true);
+  });
+
+  $('create-op-group').addEventListener('keydown', (e)=>{
+    if(e.key !== 'Enter') return;
+    e.preventDefault();
+    const firstRow = $('create-op-rows').querySelector('.create-op-row .cor-name');
+    if(firstRow) firstRow.focus();
+  });
+
+  $('create-op-addrow').addEventListener('click', ()=> addCreateOpRow(true));
+
+  $('md-create-toggle').addEventListener('click', ()=>{
+    $('add-op-form').style.display = 'none';
+    const form = $('create-op-form');
+    const willOpen = form.style.display === 'none';
+    form.style.display = willOpen ? 'flex' : 'none';
+    if(willOpen){
+      resetCreateOpForm();
+      $('create-op-group').focus();
+    }
+  });
+
+  $('create-op-cancel').addEventListener('click', ()=>{ $('create-op-form').style.display = 'none'; });
+
+  $('create-op-save').addEventListener('click', ()=>{
+    let group = $('create-op-group').value.trim().toUpperCase();
+    if(!group){ toast('Style / group name required'); return; }
+    if(masterData[group]){ toast('That group already exists — pick a different name'); return; }
+
+    // Gather every operation row that has a name filled in — lets you type
+    // out a whole new style's operations at once instead of one at a time.
+    const rows = [...$('create-op-rows').querySelectorAll('.create-op-row')].map(r=>({
+      op: r.querySelector('.cor-name').value.trim(),
+      mc: r.querySelector('.cor-mc').value.trim(),
+      smv: parseFloat(r.querySelector('.cor-smv').value) || 0
+    })).filter(r=>r.op);
+
+    if(!rows.length){ toast('Add at least one operation name'); return; }
+
+    pushUndo();
+    masterData[group] = rows;
+
+    $('create-op-form').style.display = 'none';
+    mdSelectedStyle = group;
+    mdSelectedRow = null;
+    renderStylePills();
+    renderMdRows();
+    renderSelBanner();
+    renderSections();
+    schedulePersist();
+    toast('New operation group "' + group + '" created with ' + rows.length + ' operation' + (rows.length === 1 ? '' : 's'));
+  });
+
+  function renderMasterTab(){
+    renderStylePills();
+    renderMdRows();
+    renderSelBanner();
+  }
+
+  // ---------- Manage Users ----------
+  const MENU_LABELS = {dashboard:'Dashboard', costsheet:'New Style / Operations', master:'Master Data', layout:'Layout', saved:'Buyer wise OB Saved', styles:'Styles', users:'Manage Users'};
+
+  function renderUsers(){
+    $('user-list-label').textContent = 'Users (' + appUsers.length + ')';
+    const wrap = $('user-list-wrap');
+    if(!appUsers.length){
+      wrap.innerHTML = `<div class="user-empty-note">No users created yet — fill in the form above and hit "+ Create User".</div>`;
+      return;
+    }
+    wrap.innerHTML = appUsers.map((u, i)=>{
+      const permBits = [];
+      if(u.admin){
+        permBits.push('Full access to every menu');
+      } else {
+        permBits.push((u.menus||[]).map(m => MENU_LABELS[m] || m).join(', ') || 'No menu access set');
+        const mdPerms = [];
+        if(u.permSmv) mdPerms.push('Change SMV');
+        if(u.permDelete) mdPerms.push('Delete Operations');
+        if(u.permCreate) mdPerms.push('Operation Creation');
+        if(mdPerms.length) permBits.push('Master Data: ' + mdPerms.join(', '));
+      }
+      return `
+      <div class="user-row-card" data-idx="${i}">
+        <div class="user-row-main">
+          <span class="u-name">${escHtml(u.username)}</span>${u.admin ? '<span class="u-badge">Admin</span>' : ''}
+          <div class="u-perms">${escHtml(permBits.join(' · '))}</div>
+        </div>
+        <div class="user-row-actions">
+          <button class="user-row-edit" data-idx="${i}" title="Edit access">✎</button>
+          <button class="user-row-del" data-idx="${i}" title="Delete user">&times;</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.user-row-edit').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        startEditUser(+btn.dataset.idx);
+      });
+    });
+
+    wrap.querySelectorAll('.user-row-del').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const i = +btn.dataset.idx;
+        const u = appUsers[i];
+        if(!confirm('Delete user "' + u.username + '"?')) return;
+        appUsers.splice(i, 1);
+        if(editingUserIndex === i) resetUserForm();
+        else if(editingUserIndex !== null && editingUserIndex > i) editingUserIndex--;
+        renderUsers();
+        schedulePersist();
+        toast('User removed');
+      });
+    });
+  }
+
+  let editingUserIndex = null;
+
+  function startEditUser(i){
+    const u = appUsers[i];
+    if(!u) return;
+    editingUserIndex = i;
+
+    $('user-edit-banner').style.display = 'block';
+    $('user-edit-name').textContent = u.username;
+    $('user-create-btn').textContent = 'Save Changes';
+    $('user-edit-cancel').style.display = '';
+    $('user-password').placeholder = 'Leave blank to keep current password';
+
+    $('user-username').value = u.username;
+    $('user-password').value = '';
+    $('user-admin').checked = !!u.admin;
+    document.querySelectorAll('.user-menu-chk').forEach(c=>{
+      c.checked = u.admin || (u.menus||[]).includes(c.value);
+      c.disabled = !!u.admin;
+    });
+    $('user-perm-smv').checked = !!(u.admin || u.permSmv);
+    $('user-perm-smv').disabled = !!u.admin;
+    $('user-perm-delete').checked = !!(u.admin || u.permDelete);
+    $('user-perm-delete').disabled = !!u.admin;
+    $('user-perm-create').checked = !!(u.admin || u.permCreate);
+    $('user-perm-create').disabled = !!u.admin;
+
+    document.getElementById('panel-users').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function resetUserForm(){
+    editingUserIndex = null;
+    $('user-edit-banner').style.display = 'none';
+    $('user-create-btn').textContent = '+ Create User';
+    $('user-edit-cancel').style.display = 'none';
+    $('user-password').placeholder = 'Set a password';
+
+    $('user-username').value = '';
+    $('user-password').value = '';
+    $('user-admin').checked = false;
+    document.querySelectorAll('.user-menu-chk').forEach(c=>{ c.checked = false; c.disabled = false; });
+    $('user-perm-smv').checked = false; $('user-perm-smv').disabled = false;
+    $('user-perm-delete').checked = false; $('user-perm-delete').disabled = false;
+    $('user-perm-create').checked = false; $('user-perm-create').disabled = false;
+  }
+
+  $('user-edit-cancel').addEventListener('click', resetUserForm);
+
+  // ---------- Order Details: Enter key moves to next field ----------
+  (function(){
+    const orderFieldIds = ['f-buyer','f-style','f-description','f-planline','f-orderqty','f-leadtime','f-madeby','f-ordereff'];
+    orderFieldIds.forEach((id, idx)=>{
+      const el = $(id);
+      if(!el) return;
+      el.addEventListener('keydown', (e)=>{
+        if(e.key !== 'Enter') return;
+        e.preventDefault();
+        const next = $(orderFieldIds[idx + 1]);
+        if(next) next.focus(); else el.blur();
+      });
+    });
+  })();
+
+  $('user-admin').addEventListener('change', ()=>{
+    const isAdmin = $('user-admin').checked;
+    document.querySelectorAll('.user-menu-chk').forEach(c=>{ c.checked = isAdmin; c.disabled = isAdmin; });
+    $('user-perm-smv').disabled = isAdmin;
+    $('user-perm-delete').disabled = isAdmin;
+    $('user-perm-create').disabled = isAdmin;
+    if(isAdmin){ $('user-perm-smv').checked = true; $('user-perm-delete').checked = true; $('user-perm-create').checked = true; }
+  });
+
+  $('user-create-btn').addEventListener('click', ()=>{
+    const username = $('user-username').value.trim();
+    const password = $('user-password').value;
+    const isEdit = editingUserIndex !== null;
+
+    if(!username || (!isEdit && !password)){ toast('Username and password are required'); return; }
+    const dup = appUsers.some((u,idx) => u.username.toLowerCase() === username.toLowerCase() && idx !== editingUserIndex);
+    if(dup){ toast('That username already exists'); return; }
+
+    const admin = $('user-admin').checked;
+    const menus = admin ? Object.keys(MENU_LABELS) : [...document.querySelectorAll('.user-menu-chk:checked')].map(c=>c.value).filter(m=>m!=='users');
+    const permSmv = admin || $('user-perm-smv').checked;
+    const permDelete = admin || $('user-perm-delete').checked;
+    const permCreate = admin || $('user-perm-create').checked;
+
+    if(isEdit){
+      const existing = appUsers[editingUserIndex];
+      existing.username = username;
+      if(password) existing.password = password;
+      existing.admin = admin;
+      existing.menus = menus;
+      existing.permSmv = permSmv;
+      existing.permDelete = permDelete;
+      existing.permCreate = permCreate;
+      resetUserForm();
+      renderUsers();
+      schedulePersist();
+      toast('User "' + username + '" updated');
+      return;
+    }
+
+    appUsers.push({username, password, admin, menus, permSmv, permDelete, permCreate});
+    resetUserForm();
+
+    renderUsers();
+    schedulePersist();
+    toast('User "' + username + '" created');
+  });
+
+  // ---------- Login gate ----------
+  let currentUser = null;
+
+  function refreshLoginMode(){
+    const overlay = $('login-overlay');
+    overlay.style.display = 'flex';
+    $('login-error').style.display = 'none';
+    $('login-username').value = '';
+    $('login-password').value = '';
+    if(!appUsers.length){
+      $('login-btn').textContent = 'Create & Continue';
+    } else {
+      $('login-btn').textContent = 'Sign In';
+    }
+    $('login-username').focus();
+  }
+
+  function applyUserAccess(){
+    document.querySelectorAll('.side-nav-btn[data-tab]').forEach(btn=>{
+      const tab = btn.dataset.tab;
+      const allowed = tab === 'users' ? currentUser.admin : (currentUser.admin || (currentUser.menus||[]).includes(tab));
+      btn.style.display = allowed ? '' : 'none';
+    });
+    const canCreateOps = currentUser.admin || currentUser.permCreate;
+    const createBtn = $('md-create-toggle'), addBtn = $('md-add-toggle');
+    if(createBtn) createBtn.style.display = canCreateOps ? '' : 'none';
+    if(addBtn) addBtn.style.display = canCreateOps ? '' : 'none';
+  }
+
+  function completeLogin(user){
+    currentUser = user;
+    $('login-overlay').style.display = 'none';
+    applyUserAccess();
+    const h = new Date().getHours();
+    const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    $('greetText').textContent = greet + ', ' + user.username + '!';
+    goToTab('dashboard');
+    renderSketch();
+    renderSections();
+    renderDashboard();
+  }
+
+  $('login-btn').addEventListener('click', ()=>{
+    const username = $('login-username').value.trim();
+    const password = $('login-password').value;
+    if(!username || !password){
+      $('login-error').textContent = 'Enter both username and password.';
+      $('login-error').style.display = 'block';
+      return;
+    }
+    if(!appUsers.length){
+      // first run: whoever fills this in becomes the initial admin
+      const newUser = {username, password, admin:true, menus:Object.keys(MENU_LABELS), permSmv:true, permDelete:true, permCreate:true};
+      appUsers.push(newUser);
+      schedulePersist();
+      completeLogin(newUser);
+      toast('Admin account created');
+      return;
+    }
+    const match = appUsers.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    if(!match){
+      $('login-error').textContent = 'Incorrect username or password.';
+      $('login-error').style.display = 'block';
+      return;
+    }
+    completeLogin(match);
+  });
+  $('login-username').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') $('login-password').focus(); });
+  $('login-password').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') $('login-btn').click(); });
+
+  $('login-password-toggle').addEventListener('click', ()=>{
+    const inp = $('login-password');
+    const btn = $('login-password-toggle');
+    const showing = inp.type === 'text';
+    inp.type = showing ? 'password' : 'text';
+    btn.title = showing ? 'Show password' : 'Hide password';
+    btn.setAttribute('aria-label', btn.title);
+    btn.innerHTML = showing
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-7-11-7a21.6 21.6 0 015.06-5.94M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 7 11 7a21.6 21.6 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24"/><path d="M1 1l22 22"/></svg>';
+  });
+
+  $('logout-btn').addEventListener('click', ()=>{
+    currentUser = null;
+    refreshLoginMode();
+  });
+
+  // ---------- helpers ----------
+  function escHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escAttr(s){ return escHtml(s); }
+
+  // ---------- init ----------
+  (async function init(){
+    await loadPersisted();
+    refreshLoginMode();
+  })();
+
+})();
+</script>
+</body>
+</html>
