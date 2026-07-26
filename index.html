@@ -5152,15 +5152,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // ---------- init ----------
   (async function init(){
     await loadPersisted();
-    if(tryResumeSession()) return;
-    // Login screen is skipped entirely: opening the link goes straight in as the
-    // first/admin account, with no username or password prompt.
-    if(!appUsers.length){
-      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:Object.keys(MENU_LABELS), permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
-      schedulePersist();
-    }
-    const autoUser = appUsers.find(u=>u.admin) || appUsers[0];
-    completeLogin(autoUser, {skipSessionSave:true});
+    if(!tryResumeSession()) refreshLoginMode();
   })();
 
 })();
