@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Operation Bulletin — Cost Sheet Builder</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230B2340'/%3E%3Cstop offset='1' stop-color='%230d7a6f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cg transform='rotate(45 32 32)'%3E%3Crect x='30' y='10' width='4' height='34' rx='2' fill='white'/%3E%3Ccircle cx='32' cy='12' r='4.4' fill='none' stroke='white' stroke-width='2.6'/%3E%3Cpath d='M32 44L26 54L32 51L38 54Z' fill='white'/%3E%3Cpath d='M30 20 C20 24, 16 32, 20 42' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
@@ -96,7 +97,7 @@ nav.side-nav{padding:0 10px;display:flex;flex-direction:column;gap:2px;}
 .buyer-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer;background:var(--paper-2);transition:.15s;}
 .buyer-group-head:hover{background:#EFEAE0;}
 .buyer-group-head .bg-left{display:flex;align-items:center;gap:10px;}
-.buyer-group-head h3{margin:0;font-family:'Space Grotesk';font-size:13.5px;font-weight:700;color:var(--navy);text-transform:lowercase;}
+.buyer-group-head h3{margin:0;font-family:'Space Grotesk';font-size:13.5px;font-weight:700;color:var(--navy);text-transform:uppercase;}
 .buyer-group-head .bg-right{display:flex;align-items:center;gap:8px;color:var(--ink-soft);}
 .buyer-group-head .cnt{font-family:'Inter';font-size:12px;color:var(--ink-soft);font-weight:600;}
 .buyer-group-head .chev{width:15px;height:15px;transition:transform .18s ease;flex-shrink:0;}
@@ -107,7 +108,7 @@ nav.side-nav{padding:0 10px;display:flex;flex-direction:column;gap:2px;}
 .style-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 4px;border-bottom:1px solid var(--paper-2);}
 .style-row:last-child{border-bottom:none;}
 .style-row.hl{background:rgba(22,163,148,.06);border-radius:8px;padding-left:10px;padding-right:10px;}
-.style-row .sr-name{font-weight:700;color:var(--ink);font-size:13.5px;margin-bottom:3px;}
+.style-row .sr-name{font-weight:700;color:var(--ink);font-size:13.5px;margin-bottom:3px;text-transform:uppercase;}
 .style-row .sr-name.saved-open-name,.style-row .sr-name.sr-open-name{cursor:pointer;}
 .style-row .sr-name.saved-open-name:hover,.style-row .sr-name.sr-open-name:hover{color:var(--teal-dark);text-decoration:underline;}
 .style-row .sr-meta{font-size:11.5px;color:var(--ink-soft);line-height:1.5;}
@@ -662,12 +663,24 @@ body.pdf-mode .md-hint{display:none !important;}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
         Styles
       </button>
+      <button class="side-nav-btn" data-tab="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        History
+      </button>
+      <button class="side-nav-btn" data-tab="ai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="14" rx="3"/><path d="M9 10h.01M15 10h.01"/><path d="M8 16h8"/><path d="M12 4V2"/></svg>
+        AI Assistant
+      </button>
     </nav>
     <div class="side-section-label">Admin</div>
     <nav class="side-nav no-print">
       <button class="side-nav-btn" data-tab="users">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         Manage Users
+      </button>
+      <button class="side-nav-btn" data-tab="backup">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        Backup &amp; Restore
       </button>
       <button class="side-nav-btn" id="logout-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
@@ -840,10 +853,11 @@ body.pdf-mode .md-hint{display:none !important;}
         <button class="btn btn-primary btn-sm" id="md-add-toggle">+ Add Operation</button>
         <button class="btn btn-ghost btn-sm" id="md-blank-template-download" title="Download a blank Excel template with the right columns, to fill in and upload">⬇ Download Template</button>
         <button class="btn btn-ghost btn-sm" id="md-template-download" title="Download every style and operation currently in Master Data as one Excel file">⬇ Download Master Data (Excel)</button>
-        <button class="btn btn-ghost btn-sm" id="md-template-upload-btn" title="Upload a filled-in template to bulk-save Master Data">⬆ Upload Template</button>
+        <button class="btn btn-ghost btn-sm" id="md-template-upload-btn" title="Upload a filled-in template to bulk-save Master Data — select a folder or subfolder in the tree below first to keep this upload filed there only">⬆ Upload OB</button>
         <input type="file" id="md-template-upload-input" accept=".xlsx,.xls,.csv" style="display:none">
+        <button class="btn btn-primary btn-sm" id="md-save-btn" style="background:var(--amber);border-color:var(--amber);margin-left:auto;" title="Save everything you've uploaded or changed here right now">💾 Save</button>
       </div>
-      <div class="md-hint" id="md-template-hint">Excel columns: <b>Style, Operation, Machine, SMV</b>. "Download Template" gives a blank sheet to fill in; "Download Master Data" gives every row currently saved (nothing left out). Fill either and use "Upload Template" to save it back.</div>
+      <div class="md-hint" id="md-template-hint">Excel columns: <b>Style, Operation, Machine, SMV</b>. "Download Template" gives a blank sheet to fill in; "Download Master Data" gives every row currently saved (nothing left out). Fill either and use "Upload OB" to save it back — select a folder/subfolder in the tree first to keep that upload filed there and separate from uploads made in other folders.</div>
       <div class="md-hint">Folders: click <b>+ New Folder</b> for a main folder, right-click a main folder for <b>+ New Subfolder</b>. Right-click any style pill below to <b>Move</b> or <b>Copy</b> it into a folder.</div>
       <div class="md-folder-tree" id="md-folder-tree"></div>
       <div class="style-pills" id="md-style-pills"></div>
@@ -956,6 +970,19 @@ body.pdf-mode .md-hint{display:none !important;}
     </div>
   </div>
 
+  <div class="panel" id="panel-history">
+    <div class="card">
+      <div class="card-title"><span class="num">H</span>History — by User</div>
+      <div class="saved-toolbar no-print">
+        <div class="saved-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="history-search" placeholder="Search by user, Style No, or Buyer...">
+        </div>
+      </div>
+      <div id="history-list-wrap"></div>
+    </div>
+  </div>
+
   <div class="panel" id="panel-users">
     <div class="card">
       <div class="card-title"><span class="num">U</span>Manage Users</div>
@@ -976,6 +1003,8 @@ body.pdf-mode .md-hint{display:none !important;}
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="layout"> <span>Layout</span></label>
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="saved"> <span>Buyer wise OB Saved</span></label>
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="styles"> <span>Styles</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="history"> <span>History</span></label>
+          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="ai"> <span>AI Assistant</span></label>
         </div>
         <div class="user-perm-note">Manage Users is available to Admin accounts only.</div>
 
@@ -996,6 +1025,51 @@ body.pdf-mode .md-hint{display:none !important;}
 
       <div class="user-list-label" id="user-list-label">Users (0)</div>
       <div id="user-list-wrap"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-backup">
+    <div class="card">
+      <div class="card-title"><span class="num">B</span>Backup &amp; Restore</div>
+      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 18px;">Download everything in this app — Master Data, Users, Buyer wise Saved OBs, Layouts — as one file. Keep it somewhere safe. If this computer/browser ever loses its data, import that file back to get everything again.</p>
+
+      <div style="border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;color:var(--navy);">Export Backup</div>
+        <div style="color:var(--ink-soft);font-size:12.5px;margin-bottom:12px;">Saves a .json file with all current app data.</div>
+        <button class="btn btn-primary" id="backup-export-btn">Download Backup File</button>
+      </div>
+
+      <div style="border:1px solid var(--line);border-radius:10px;padding:16px;">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;color:var(--navy);">Import Backup</div>
+        <div style="color:var(--ink-soft);font-size:12.5px;margin-bottom:12px;">Choose a previously downloaded backup file to restore it. This overwrites current data with what's in the file.</div>
+        <input type="file" id="backup-import-input" accept="application/json,.json" style="display:none;">
+        <button class="btn btn-ghost" id="backup-import-btn">Choose Backup File to Restore</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-ai">
+    <div class="card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;">
+            <span style="width:24px;height:24px;border-radius:7px;background:var(--teal);color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">A</span>
+            <h3 style="margin:0;font-family:'Space Grotesk';font-size:15.5px;font-weight:700;color:var(--navy);">AI Assistant</h3>
+          </div>
+          <p style="color:var(--ink-soft);font-size:12.5px;margin:0;max-width:560px;">Ask anything about SMV, OB, costing, TNA, or any general question — you'll get a clear answer in English.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          <button class="btn btn-ghost" id="ai-history-btn" style="font-size:12.5px;">History</button>
+          <button class="btn btn-primary" id="ai-newchat-btn" style="font-size:12.5px;">+ New Chat</button>
+        </div>
+      </div>
+
+      <div id="ai-chat-log" style="border:1px solid var(--line);border-radius:10px;padding:14px;min-height:280px;max-height:480px;overflow-y:auto;background:#fff;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="text" id="ai-chat-input" placeholder="Type your question here…" style="flex:1;border:1.5px solid var(--ink);border-radius:24px;padding:12px 18px;font-family:'Inter';font-size:13.5px;outline:none;">
+        <button class="btn btn-primary" id="ai-chat-send-btn" style="border-radius:20px;padding:10px 22px;">Send</button>
+      </div>
     </div>
   </div>
 
@@ -1161,6 +1235,46 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     toastEl.classList.add('show');
     clearTimeout(toastEl._t);
     toastEl._t = setTimeout(()=>toastEl.classList.remove('show'), 1800);
+  }
+
+  // ---------- image upload: resize + compress before storing ----------
+  // Reference photos straight off a phone camera can be several MB each as a
+  // raw base64 data URL. Every image (garment sketch + one per style) is
+  // saved together under a small set of storage keys with a 5MB ceiling per
+  // key, so a few full-size photos could quietly blow past that limit. When
+  // that happened the save silently failed, the page kept whatever was last
+  // saved successfully, and on the next reload the newly-added image looked
+  // like it had "disappeared" on its own. Shrinking every photo down to a
+  // sane max dimension + JPEG quality before it's ever stored keeps each one
+  // to a few hundred KB, so this stops happening in normal use.
+  function compressImageFile(file, maxDim, quality){
+    maxDim = maxDim || 1000;
+    quality = quality || 0.75;
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onerror = ()=> reject(reader.error);
+      reader.onload = (ev)=>{
+        const img = new Image();
+        img.onerror = ()=> resolve(ev.target.result); // fall back to the raw file if decoding fails
+        img.onload = ()=>{
+          let { width, height } = img;
+          if(width > maxDim || height > maxDim){
+            const scale = maxDim / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff'; // flatten transparency so JPEG export doesn't turn it black
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   // ---------- custom prompt/confirm modals ----------
@@ -1330,19 +1444,41 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   // ---------- persistence (best-effort, personal scope) ----------
   async function loadPersisted(){
-    // These four keys don't depend on each other, so fetch them all at once
-    // instead of waiting on four network round trips back to back — this
-    // was a big chunk of why the app felt slow to open.
-    const [mdRes, miRes, usRes, srRes, mfRes, msfRes] = await Promise.all([
-      window.storage.get('ob_master_data').catch(()=>null),
-      window.storage.get('ob_master_images').catch(()=>null),
+    // Master Data (styles, reference images, folders, style→folder mapping)
+    // now lives together under one combined key instead of four separate
+    // ones — see the note on persistAll() below for why. We still read the
+    // old four keys as a one-time fallback so nobody who saved under the
+    // previous version loses anything; once loaded, the very next save
+    // writes it back out under the new combined key.
+    const [bundleRes, usRes, srRes] = await Promise.all([
+      window.storage.get('ob_master_bundle').catch(()=>null),
       window.storage.get('ob_users').catch(()=>null),
-      window.storage.get('ob_current_sheet_v2').catch(()=>null),
-      window.storage.get('ob_master_folders').catch(()=>null),
-      window.storage.get('ob_md_style_folder').catch(()=>null)
+      window.storage.get('ob_current_sheet_v2').catch(()=>null)
     ]);
 
-    if(mdRes && mdRes.value){ try{ masterData = JSON.parse(mdRes.value); }catch(e){} }
+    let bundle = null;
+    if(bundleRes && bundleRes.value){ try{ bundle = JSON.parse(bundleRes.value); }catch(e){} }
+
+    if(bundle){
+      masterData = bundle.masterData || {};
+      masterImages = bundle.masterImages || {};
+      mdFolders = bundle.mdFolders || {};
+      mdStyleFolder = bundle.mdStyleFolder || {};
+    } else {
+      // Nothing under the new combined key yet — fall back to the old
+      // separate keys from before this change.
+      const [mdRes, miRes, mfRes, msfRes] = await Promise.all([
+        window.storage.get('ob_master_data').catch(()=>null),
+        window.storage.get('ob_master_images').catch(()=>null),
+        window.storage.get('ob_master_folders').catch(()=>null),
+        window.storage.get('ob_md_style_folder').catch(()=>null)
+      ]);
+      if(mdRes && mdRes.value){ try{ masterData = JSON.parse(mdRes.value); }catch(e){} }
+      if(miRes && miRes.value){ try{ masterImages = JSON.parse(miRes.value); }catch(e){} }
+      if(mfRes && mfRes.value){ try{ mdFolders = JSON.parse(mfRes.value) || {}; }catch(e){} }
+      if(msfRes && msfRes.value){ try{ mdStyleFolder = JSON.parse(msfRes.value) || {}; }catch(e){} }
+    }
+
     // Defensive cleanup: drop any corrupted operation entries (missing a
     // real name) that might have slipped in from an older version — these
     // were crashing the Master Data screen.
@@ -1351,9 +1487,6 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         masterData[g] = masterData[g].filter(o => o && typeof o.op === 'string' && o.op.trim());
       }
     });
-    if(miRes && miRes.value){ try{ masterImages = JSON.parse(miRes.value); }catch(e){} }
-    if(mfRes && mfRes.value){ try{ mdFolders = JSON.parse(mfRes.value) || {}; }catch(e){} }
-    if(msfRes && msfRes.value){ try{ mdStyleFolder = JSON.parse(msfRes.value) || {}; }catch(e){} }
     // Defensive cleanup: drop mappings pointing at folders/styles that no longer exist,
     // and make sure our next auto-generated folder id never collides with a loaded one.
     Object.keys(mdFolders).forEach(id=>{
@@ -1373,19 +1506,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
       }catch(e){}
     }
-    // Ensure the default admin account always exists, even if older/other data was persisted previously
-    if(!appUsers.some(u => u.username && u.username.toLowerCase() === 'karthi')){
-      appUsers.unshift({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
-    } else {
-      const idx = appUsers.findIndex(u => u.username && u.username.toLowerCase() === 'karthi');
-      appUsers[idx].password = 'karthi4478';
-      appUsers[idx].admin = true;
-      appUsers[idx].menus = ['dashboard','costsheet','master','layout','saved','users'];
-      appUsers[idx].permSmv = true;
-      appUsers[idx].permDelete = true;
-      appUsers[idx].permCreate = true;
-      appUsers[idx].permDownload = true;
-      appUsers[idx].permUpload = true;
+    // Safety net only: if there is truly no user account at all (e.g. very
+    // first run, or persisted data was lost), create one default admin so
+    // nobody gets locked out. If any account already exists — including one
+    // named "karthi" that was renamed or had its password changed later —
+    // we leave it exactly as saved instead of overwriting it back to the
+    // original default every time the app loads.
+    if(!appUsers.length){
+      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
     }
     if(srRes && srRes.value){
       try{
@@ -1409,13 +1537,51 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let saveTimer = null;
   function schedulePersist(){
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persistAll, 500);
+    // Slightly longer debounce than before — every field edit used to fire a
+    // 6-key write burst just 500ms after the last keystroke, so someone typing
+    // steadily across several fields could trigger a new save cycle every
+    // half second. That burst of near-back-to-back writes is what was tripping
+    // the storage backend's rate limit and making every key in the same
+    // cycle fail together. Waiting a bit longer for typing to actually pause
+    // cuts the number of save cycles way down.
+    saveTimer = setTimeout(persistAll, 1000);
   }
+
+  // Retries a single storage write a couple of times with a short backoff
+  // before giving up — most failures here are transient (a brief rate-limit
+  // or network hiccup), not a real, permanent problem, so it's worth quietly
+  // trying again before bothering the user about it.
+  async function setWithRetry(key, value, attempts){
+    attempts = attempts || 3;
+    let lastErr;
+    for(let i = 0; i < attempts; i++){
+      try{
+        await window.storage.set(key, value);
+        return true;
+      }catch(e){
+        lastErr = e;
+        if(i < attempts - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+      }
+    }
+    throw lastErr;
+  }
+
   async function persistAll(){
-    // These four writes are independent of each other, so firing them together
-    // (instead of awaiting each one before starting the next) cuts save time
-    // roughly 4x — previously a single "save" waited on four full network
-    // round trips back to back, which is most of what made things feel slow.
+    // Master Data (styles, reference images, folders, style→folder mapping)
+    // is saved together as ONE combined key instead of four separate ones.
+    // Every save cycle used to fire six separate storage writes at once;
+    // on a busy screen (typing, uploading, editing operations back to back)
+    // that adds up to a lot of requests in a short window and was tripping
+    // the storage backend's rate limit — which is what was making EVERY key
+    // in that same cycle fail together with "Save failed (...)" even though
+    // most of that data hadn't actually changed. Combining the four Master
+    // Data pieces into one write cuts that down to three requests per cycle.
+    const masterBundle = {
+      masterData: masterData,
+      masterImages: masterImages,
+      mdFolders: mdFolders,
+      mdStyleFolder: mdStyleFolder
+    };
     const sheetPayload = {
       sections: sheetSections,
       sketch: sketchDataUrl,
@@ -1425,17 +1591,57 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         madeby: $('f-madeby').value, ordereff: $('f-ordereff').value
       }
     };
-    await Promise.all([
-      window.storage.set('ob_master_data', JSON.stringify(masterData)).catch(()=>{}),
-      window.storage.set('ob_master_images', JSON.stringify(masterImages)).catch(()=>{}),
-      window.storage.set('ob_users', JSON.stringify(appUsers)).catch(()=>{}),
-      window.storage.set('ob_current_sheet_v2', JSON.stringify(sheetPayload)).catch(()=>{}),
-      window.storage.set('ob_master_folders', JSON.stringify(mdFolders)).catch(()=>{}),
-      window.storage.set('ob_md_style_folder', JSON.stringify(mdStyleFolder)).catch(()=>{})
-    ]);
+    // Each write reports its own success/failure (after retrying) instead of a
+    // bare .catch(()=>{}) so a save that's still failing after retries surfaces
+    // to the user rather than looking like data "disappeared" on reload.
+    const labeled = [
+      ['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))],
+      ['Users', setWithRetry('ob_users', JSON.stringify(appUsers))],
+      ['Current sheet', setWithRetry('ob_current_sheet_v2', JSON.stringify(sheetPayload))]
+    ];
+    const results = await Promise.allSettled(labeled.map(l => l[1]));
+    const failed = results
+      .map((r, i) => (r.status === 'rejected' ? labeled[i][0] : null))
+      .filter(Boolean);
+    if(failed.length){
+      toast('Save failed (' + failed.join(', ') + ') — check your connection and try again');
+    }
+    return failed.length === 0;
   }
 
+  // ---------- Master Data screen: explicit "Save" button ----------
+  // Everything on this screen (uploading a reference image, uploading an OB
+  // template, adding/editing an operation) already autosaves a moment after
+  // you make the change. This button exists for a clear, on-demand
+  // confirmation: click it any time after uploading, and it saves right now
+  // (no debounce wait) and tells you plainly whether everything went through.
+  $('md-save-btn').addEventListener('click', async ()=>{
+    clearTimeout(saveTimer);
+    const btn = $('md-save-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    const ok = await persistAll();
+    btn.disabled = false;
+    btn.textContent = original;
+    if(ok) toast('✓ Everything is saved');
+  });
+
   // ---------- new style: reset builder to a blank OB ----------
+  // True when the current builder has data that a "New Style" click would
+  // wipe and that isn't safely captured by a Save OB yet. If an existing
+  // saved OB is open (openedSavedId set), its last-saved copy already lives
+  // safely under ob_saved:<id> regardless of what's on screen, so this only
+  // needs to catch the case of a brand-new, never-saved style being typed in.
+  function hasUnsavedBuilderData(){
+    if(openedSavedId) return false;
+    if($('f-buyer').value.trim() || $('f-style').value.trim()) return true;
+    if($('f-description').value.trim() || $('f-planline').value.trim() || $('f-orderqty').value.trim()) return true;
+    if(sketchDataUrl) return true;
+    if(sheetSections.some(sec => (sec.rows || []).length > 0)) return true;
+    return false;
+  }
+
   function resetBuilder(){
     pushUndo();
     sheetSections = [];
@@ -1464,6 +1670,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // ---------- sidebar nav ----------
   document.querySelectorAll('.side-nav-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
+      // Capture this BEFORE the panels get switched below — it tells us
+      // whether the person was already sitting on the cost sheet screen.
+      const wasAlreadyOnCostsheet = $('panel-costsheet') && $('panel-costsheet').classList.contains('active');
       document.querySelectorAll('.side-nav-btn').forEach(b=>b.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
       btn.classList.add('active');
@@ -1473,10 +1682,25 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       // click, Edit from Saved list, Open OB from Dashboard, etc).
       const obMenuWrap = $('ob-mobile-menu-wrap');
       if(obMenuWrap) obMenuWrap.style.display = (btn.dataset.tab === 'costsheet') ? '' : 'none';
-      // Only reset when the person actually clicks "New Style" themselves.
+      // "New Style" only resets the builder when the person clicks it while
+      // ALREADY on the cost sheet screen — that's a deliberate "clear this
+      // and start over" action. If they're navigating back to the cost sheet
+      // from another tab (Master Data, Saved OBs, etc.) it just brings them
+      // back to what they were working on, unsaved changes intact, so a quick
+      // trip to another tab and back never wipes an in-progress style.
       // Programmatic navigation (Edit from Saved list, Open OB from Dashboard) uses
       // goToTab()/btn.click() which fires an untrusted event, so it won't wipe the loaded OB.
-      if(btn.dataset.tab === 'costsheet' && e.isTrusted) resetBuilder();
+      if(btn.dataset.tab === 'costsheet' && e.isTrusted && wasAlreadyOnCostsheet){
+        if(hasUnsavedBuilderData()){
+          showConfirmModal(
+            'This style has changes that were never saved with "Save OB". Starting a new style will clear this screen and that data will be lost. Continue?',
+            resetBuilder,
+            {title:'Unsaved changes', yesLabel:'Start new style', danger:true}
+          );
+        } else {
+          resetBuilder();
+        }
+      }
       if(btn.dataset.tab === 'master') renderMasterTab();
       if(btn.dataset.tab === 'layout'){
         if(e.isTrusted){ currentLayout = null; renderLayoutEditor(); }
@@ -1485,6 +1709,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(btn.dataset.tab === 'users') renderUsers();
       if(btn.dataset.tab === 'saved') renderSavedList();
       if(btn.dataset.tab === 'styles') renderStylesList();
+      if(btn.dataset.tab === 'history') renderHistoryList();
+      if(btn.dataset.tab === 'ai') loadAiChat();
       if(btn.dataset.tab === 'dashboard') renderDashboard();
       closeSidebar();
       window.scrollTo({top:0, behavior:'smooth'});
@@ -2184,7 +2410,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   $('dash-buyers-card').addEventListener('click', ()=> goToTab('saved'));
   $('dash-buyers-card').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goToTab('saved'); } });
 
-  function loadSavedRecord(rec, asRevision){
+  function loadSavedRecord(rec, mode){
     pushUndo();
     sheetSections = JSON.parse(JSON.stringify(rec.sections || []));
     sketchDataUrl = rec.sketch || null;
@@ -2196,23 +2422,31 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     $('f-leadtime').value = rec.leadtime || '';
     $('f-madeby').value = rec.madeby || '';
     $('f-ordereff').value = rec.ordereff || '';
-    // Deliberately NOT set to rec.id: once you edit a saved OB and hit
-    // Save OB, it should save as its own new record, not overwrite the
-    // original saved one.
-    openedSavedId = null;
     renderSketch();
     renderSections();
     goToTab('costsheet');
-    if(asRevision){
+    if(mode === 'sample'){
       // Root of the chain: if rec itself is already a revision, link the new
       // save back to the same original so everything stays in one group.
+      openedSavedId = null;
       pendingRevisionOf = rec.revisionOf || rec.id;
       pendingRevisionLabel = 'As Per Sample';
       toast('Loaded ' + rec.style + ' — make your sample changes, then Save OB to save it as "As Per Sample"');
-    } else {
+    } else if(mode === 'saveas'){
+      // "Save As": load this OB's data, but treat it as a brand-new, separate
+      // style — Save OB here creates its own new record and never touches
+      // the original one this was loaded from.
+      openedSavedId = null;
       pendingRevisionOf = null;
       pendingRevisionLabel = null;
-      toast('Loaded ' + rec.style + ' — editing will save as a new OB');
+      toast('Loaded ' + rec.style + ' — change what you need, then Save OB to save it as a new, separate style');
+    } else {
+      // Plain Edit: keep updating this exact saved record — Save OB here
+      // overwrites it in place instead of creating an extra copy.
+      openedSavedId = rec.id;
+      pendingRevisionOf = rec.revisionOf || null;
+      pendingRevisionLabel = rec.revisionOf ? (rec.revisionLabel || 'As Per Sample') : null;
+      toast('Loaded ' + rec.style + ' — Save OB will update this same saved OB');
     }
   }
 
@@ -2246,6 +2480,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         <button class="btn-edit sr-copy-layout-btn" data-id="${escAttr(rev.id)}" title="Copy this OB into a new Layout" style="border-color:var(--teal);color:var(--teal-dark);">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
           Copy to Layout
+        </button>
+        <button class="btn-edit sr-saveas-btn" data-id="${escAttr(rev.id)}" title="Load this and save your changes as a brand-new, separate style" style="border-color:var(--ink-soft);color:var(--ink-soft);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+          Save As
         </button>
         <button class="btn-edit sr-open-btn" data-id="${escAttr(rev.id)}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
@@ -2282,6 +2520,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
             Copy to Layout
           </button>
+          <button class="btn-edit sr-saveas-btn" data-id="${escAttr(it.id)}" title="Load this and save your changes as a brand-new, separate style" style="border-color:var(--ink-soft);color:var(--ink-soft);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+            Save As
+          </button>
           <button class="btn-edit sr-open-btn" data-id="${escAttr(it.id)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
             Edit
@@ -2300,14 +2542,21 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       el.addEventListener('click', (e)=>{
         e.stopPropagation();
         const rec = all.find(it => it.id === el.dataset.id);
-        if(rec) loadSavedRecord(rec);
+        if(rec) loadSavedRecord(rec, 'edit');
       });
     });
     wrap.querySelectorAll('.sr-sample-btn').forEach(el=>{
       el.addEventListener('click', (e)=>{
         e.stopPropagation();
         const rec = all.find(it => it.id === el.dataset.id);
-        if(rec) loadSavedRecord(rec, true);
+        if(rec) loadSavedRecord(rec, 'sample');
+      });
+    });
+    wrap.querySelectorAll('.sr-saveas-btn').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const rec = all.find(it => it.id === el.dataset.id);
+        if(rec) loadSavedRecord(rec, 'saveas');
       });
     });
     wrap.querySelectorAll('.sr-copy-layout-btn').forEach(el=>{
@@ -2555,6 +2804,71 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
   $('styles-search').addEventListener('input', renderStylesList);
 
+  // ---------- History: every style, grouped by which user saved it ----------
+  async function renderHistoryList(){
+    const wrap = $('history-list-wrap');
+    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const all = await fetchSavedList();
+    const q = ($('history-search').value || '').trim().toLowerCase();
+
+    if(!all.length){
+      wrap.innerHTML = '<div class="saved-empty"><svg viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><div>No history yet.<br>Build a sheet under <b>New Style</b> and click <b>Save OB</b>.</div></div>';
+      return;
+    }
+
+    // Only root OBs (not sample revisions) count as their own entry in a
+    // user's history — revisions render nested underneath their original,
+    // same as the Buyer wise OB and Styles tabs.
+    const roots = all.filter(it => !it.revisionOf);
+    const childrenOf = (id) => all.filter(it => it.revisionOf === id).sort((a,b)=> new Date(a.savedAt||0) - new Date(b.savedAt||0));
+
+    const groups = {};
+    roots.forEach(it=>{
+      const u = it.savedBy || 'Unknown user';
+      (groups[u] = groups[u] || []).push(it);
+    });
+    // Most-active user first, ties broken alphabetically.
+    const usersList = Object.keys(groups).sort((a,b)=> groups[b].length - groups[a].length || a.localeCompare(b));
+
+    const matches = (it) => !q || (it.buyer||'').toLowerCase().includes(q) || (it.style||'').toLowerCase().includes(q) || (it.planline||'').toLowerCase().includes(q) || (it.revisionLabel||'').toLowerCase().includes(q) || (it.savedBy||'').toLowerCase().includes(q);
+    const groupMatches = (u) => groups[u].some(it => matches(it) || childrenOf(it.id).some(matches));
+
+    const visibleUsers = usersList.filter(u => groupMatches(u) || (!q ? true : u.toLowerCase().includes(q)));
+
+    if(!visibleUsers.length){
+      wrap.innerHTML = '<div class="saved-empty">No results for "' + escHtml($('history-search').value) + '".</div>';
+      return;
+    }
+
+    wrap.innerHTML = visibleUsers.map(u=>{
+      const styleItems = groups[u];
+      const openState = q && groupMatches(u) ? ' open' : '';
+      const rows = styleItems
+        .sort((a,b)=> new Date(b.savedAt||0) - new Date(a.savedAt||0))
+        .map(it=>{
+          const isHl = q && matches(it) ? ' hl' : '';
+          return renderRootRow(it, childrenOf(it.id), isHl, matches, q);
+        }).join('');
+      const n = styleItems.length;
+      return `<div class="buyer-group${openState}" data-user="${escAttr(u)}">
+        <div class="buyer-group-head">
+          <div class="bg-left"><h3>${escHtml(u)}</h3></div>
+          <div class="bg-right"><span class="cnt">${n} style${n===1?'':'s'}</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+        <div class="buyer-group-body"><div class="buyer-group-body-inner">${rows}</div></div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.buyer-group-head').forEach(head=>{
+      head.addEventListener('click', ()=>{
+        head.closest('.buyer-group').classList.toggle('open');
+      });
+    });
+
+    wireStyleRowActions(wrap, all, renderHistoryList);
+  }
+  $('history-search').addEventListener('input', renderHistoryList);
+
 
   $('f-style').addEventListener('change', ()=>{
     const style = $('f-style').value.trim();
@@ -2571,20 +2885,50 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // ---------- sketch upload ----------
   $('sketch-input').addEventListener('change', (e)=>{
     const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file later
     if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
+    compressImageFile(file).then((dataUrl)=>{
       pushUndo();
-      sketchDataUrl = ev.target.result;
+      sketchDataUrl = dataUrl;
       renderSketch();
       schedulePersist();
-    };
-    reader.readAsDataURL(file);
+    }).catch(()=>{ toast('Could not read that image'); });
   });
 
   $('sketch-box').addEventListener('click', ()=>{
     if(sketchDataUrl){ openLightbox(sketchDataUrl); }
     else { $('sketch-input').click(); }
+  });
+
+  // ---------- sketch: paste an image straight from the clipboard ----------
+  // Lets someone take a screenshot / copy a photo and just press Ctrl+V
+  // instead of having to save the file first and pick it via the file
+  // dialog. Works anywhere on the New Style screen as long as focus isn't
+  // inside a text field (so normal text pasting into Buyer/Style/etc. is
+  // completely unaffected).
+  document.addEventListener('paste', (e)=>{
+    const onCostsheet = $('panel-costsheet') && $('panel-costsheet').classList.contains('active');
+    if(!onCostsheet) return;
+    const active = document.activeElement;
+    const tag = active ? active.tagName : '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || (active && active.isContentEditable)) return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for(let i = 0; i < items.length; i++){
+      const item = items[i];
+      if(item.type && item.type.indexOf('image/') === 0){
+        const file = item.getAsFile();
+        if(!file) continue;
+        e.preventDefault();
+        compressImageFile(file).then((dataUrl)=>{
+          pushUndo();
+          sketchDataUrl = dataUrl;
+          renderSketch();
+          schedulePersist();
+          toast('Image pasted');
+        }).catch(()=>{ toast('Could not read that image'); });
+        break;
+      }
+    }
   });
 
   function openLightbox(src){
@@ -3115,9 +3459,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     pushUndo();
     const sec = sheetSections[secIdx];
 
-    masterData[group] = masterData[group] || [];
-    const dup = masterData[group].find(o=>(o.op||'').toLowerCase() === name.toLowerCase());
-    if(!dup){ masterData[group].push({op:name, mc:machine, smv:smv}); } // keeps Master Data in sync too
+    // This operation only goes into the current sheet — it deliberately does
+    // NOT touch Master Data. Master Data should only ever change when someone
+    // works inside the Master Data screen itself (adding/editing an operation
+    // there, or uploading a template); typing an operation while building an
+    // OB here must never silently add or edit anything in Master Data.
 
     // Insert right after the row currently selected in the cost sheet (same
     // anchor behaviour as the Master Sheet picker), instead of always
@@ -3531,15 +3877,16 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       const smv = parseFloat(tr.querySelector('.iaf-smv').value) || 0;
       if(!name){ toast('Operation name required'); return; }
 
-      masterData[sec.group] = masterData[sec.group] || [];
-      const dup = masterData[sec.group].find(o=>(o.op||'').toLowerCase() === name.toLowerCase());
-      if(dup){ toast('That operation already exists in Master Data for ' + sec.group); return; }
+      const dupInSheet = sec.rows.find(o=>(o.op||'').toLowerCase() === name.toLowerCase());
+      if(dupInSheet){ toast('That operation is already in this section'); return; }
 
       pushUndo();
+      // Only goes into this section of the current OB — deliberately does NOT
+      // touch Master Data. Master Data changes only from working inside the
+      // Master Data screen itself (adding/editing there, or an "Upload OB").
       const newOp = {op:name, mc:machine, smv:smv};
-      masterData[sec.group].push(newOp); // goes into the full Master Sheet
       const insertAt = opInsertIndex(secIdx, sec);
-      sec.rows.splice(insertAt, 0, {op:newOp.op, mc:newOp.mc, smv:newOp.smv}); // and into this section right away
+      sec.rows.splice(insertAt, 0, {op:newOp.op, mc:newOp.mc, smv:newOp.smv});
       if(selectedOpRow && selectedOpRow.sec === secIdx) selectedOpRow = {sec:secIdx, row:insertAt};
 
       // keep the "new operation" form open (cleared, focused) so the next operation
@@ -3548,7 +3895,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
       renderSections();
       schedulePersist();
-      toast('"' + name + '" added to Master Data (' + sec.group + ') and this section');
+      toast('"' + name + '" added to this section');
     };
 
     tr.querySelector('.iaf-save').addEventListener('click', saveNewOp);
@@ -4077,15 +4424,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const file = e.target.files[0];
     e.target.value = ''; // allow re-selecting the same file later
     if(!file || !mdImageUploadTarget) return;
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      masterImages[mdImageUploadTarget] = ev.target.result;
+    const target = mdImageUploadTarget;
+    compressImageFile(file).then((dataUrl)=>{
+      masterImages[target] = dataUrl;
       mdImageUploadTarget = null;
       renderMdRows();
       schedulePersist();
       toast('Image added');
-    };
-    reader.readAsDataURL(file);
+    }).catch(()=>{ mdImageUploadTarget = null; toast('Could not read that image'); });
   });
 
   // ---------- right-click context menu on a Master Data style group (pill or header) ----------
@@ -4808,6 +5154,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         });
         const savedCount = validRows.length;
 
+        // If a folder or subfolder is selected in the tree, file every style
+        // touched by this upload into it — so uploading while a specific
+        // subfolder is open keeps that OB's styles separate from styles
+        // uploaded while some other folder is selected, instead of every
+        // upload landing in the same shared, unfiled pile.
+        let filedInto = null;
+        if(mdFolderFilter && mdFolderFilter !== '__unfiled__' && mdFolders[mdFolderFilter]){
+          filedInto = mdFolders[mdFolderFilter].name;
+          stylesTouched.forEach(s => { mdStyleFolder[s] = mdFolderFilter; });
+        }
+
         mdSelectedRow = null;
         // Clear whatever pill/search filter was active — otherwise the upload saves fine
         // but stays hidden behind the old filter and looks like nothing happened.
@@ -4818,7 +5175,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         renderSelBanner();
         renderSections();
         schedulePersist();
-        toast(savedCount + ' operation(s) saved across ' + stylesTouched.size + ' style(s)' + (skipped ? ' — ' + skipped + ' row(s) skipped (missing Style/Operation)' : ''));
+        toast(savedCount + ' operation(s) saved across ' + stylesTouched.size + ' style(s)' + (filedInto ? ' — filed into "' + filedInto + '"' : '') + (skipped ? ' — ' + skipped + ' row(s) skipped (missing Style/Operation)' : ''));
       }catch(err){
         toast('Could not read that file — please use the downloaded template format');
       }
@@ -4828,7 +5185,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   });
 
   // ---------- Manage Users ----------
-  const MENU_LABELS = {dashboard:'Dashboard', costsheet:'New Style / Operations', master:'Master Data', layout:'Layout', saved:'Buyer wise OB Saved', styles:'Styles', users:'Manage Users'};
+  const MENU_LABELS = {dashboard:'Dashboard', costsheet:'New Style / Operations', master:'Master Data', layout:'Layout', saved:'Buyer wise OB Saved', styles:'Styles', history:'History', ai:'AI Assistant', users:'Manage Users'};
 
   function renderUsers(){
     $('user-list-label').textContent = 'Users (' + appUsers.length + ')';
@@ -5067,7 +5424,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   function applyUserAccess(){
     document.querySelectorAll('.side-nav-btn[data-tab]').forEach(btn=>{
       const tab = btn.dataset.tab;
-      const allowed = tab === 'users' ? currentUser.admin : (currentUser.admin || (currentUser.menus||[]).includes(tab));
+      const allowed = (tab === 'users' || tab === 'backup') ? currentUser.admin : (currentUser.admin || (currentUser.menus||[]).includes(tab));
       btn.style.display = allowed ? '' : 'none';
     });
     const canCreateOps = currentUser.admin || currentUser.permCreate;
@@ -5143,6 +5500,241 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     refreshLoginMode();
   });
 
+  // ---------- backup & restore ----------
+  async function exportBackup(){
+    try{
+      const res = await window.storage.listWithValues('');
+      const values = (res && res.values) || {};
+      const backup = {
+        app: 'Operation Bulletin — Cost Sheet Builder',
+        exportedAt: new Date().toISOString(),
+        data: values
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ob-backup-' + new Date().toISOString().slice(0,10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded');
+    }catch(e){
+      toast('Could not create backup — try again');
+    }
+  }
+  async function importBackupFile(file){
+    try{
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const data = (parsed && parsed.data) ? parsed.data : parsed;
+      const keys = Object.keys(data || {});
+      if(!keys.length){ toast('Backup file has no data'); return; }
+      for(const k of keys){
+        await window.storage.set(k, data[k]);
+      }
+      toast('Backup restored — reloading…');
+      setTimeout(()=> location.reload(), 1200);
+    }catch(e){
+      toast('Could not read that backup file');
+    }
+  }
+  const backupExportBtn = $('backup-export-btn');
+  if(backupExportBtn) backupExportBtn.addEventListener('click', exportBackup);
+  const backupImportBtn = $('backup-import-btn');
+  const backupImportInput = $('backup-import-input');
+  if(backupImportBtn && backupImportInput){
+    backupImportBtn.addEventListener('click', ()=> backupImportInput.click());
+    backupImportInput.addEventListener('change', (e)=>{
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if(!file) return;
+      showConfirmModal(
+        'This will overwrite current app data (Master Data, Users, Saved OBs, Layouts) with the contents of "' + file.name + '". Continue?',
+        ()=> importBackupFile(file),
+        {title:'Restore backup', yesLabel:'Restore', danger:true}
+      );
+    });
+  }
+
+  // ---------- AI assistant (direct API key, no separate backend) ----------
+  let aiChatHistory = []; // [{role:'user'|'assistant', content, ts}]
+  let aiChatSessions = []; // [{id, title, messages, ts}]
+  let aiSending = false;
+
+  function aiHistoryKey(){
+    return 'ai_chat_history:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
+  }
+  function aiSessionsKey(){
+    return 'ai_chat_sessions:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
+  }
+  async function loadAiSessions(){
+    try{
+      const res = await window.storage.get(aiSessionsKey());
+      aiChatSessions = (res && res.value) ? JSON.parse(res.value) : [];
+    }catch(e){ aiChatSessions = []; }
+  }
+  async function saveAiSessions(){
+    try{ await window.storage.set(aiSessionsKey(), JSON.stringify(aiChatSessions)); }catch(e){}
+  }
+  async function loadAiChat(){
+    try{
+      const histRes = await window.storage.get(aiHistoryKey());
+      aiChatHistory = (histRes && histRes.value) ? JSON.parse(histRes.value) : [];
+    }catch(e){ aiChatHistory = []; }
+    await loadAiSessions();
+    renderAiChat();
+  }
+  function renderAiChat(){
+    const log = $('ai-chat-log');
+    if(!log) return;
+    if(!aiChatHistory.length){
+      log.innerHTML = `<div style="align-self:flex-start;max-width:88%;background:var(--paper-2);color:var(--ink);padding:14px 16px;border-radius:12px;font-size:13.5px;line-height:1.7;">
+        Hi! 👋 Welcome to Smart DataOB Assistant!<br><br>
+        How can I help you today? You can ask me about:<br><br>
+        <strong>Garment Manufacturing</strong> — SMV, OB, Line Efficiency, CM Costing, Fabric Consumption, TNA...<br><br>
+        <strong>General Questions</strong> — Anything else you want to know!<br><br>
+        What's on your mind?
+      </div>`;
+      return;
+    }
+    log.innerHTML = aiChatHistory.map(m=>{
+      const isUser = m.role === 'user';
+      return '<div style="align-self:'+(isUser ? 'flex-end' : 'flex-start')+';max-width:80%;background:'+(isUser ? 'var(--navy)' : 'var(--paper-2)')+';color:'+(isUser ? '#fff' : 'var(--ink)')+';padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;">'+escHtml(m.content)+'</div>';
+    }).join('');
+    log.scrollTop = log.scrollHeight;
+  }
+  async function persistAiChat(){
+    try{ await window.storage.set(aiHistoryKey(), JSON.stringify(aiChatHistory)); }catch(e){}
+  }
+  async function archiveCurrentAiChat(){
+    if(!aiChatHistory.length) return;
+    const firstUser = aiChatHistory.find(m=>m.role==='user');
+    const title = firstUser ? firstUser.content.slice(0,60) : 'Chat';
+    aiChatSessions.unshift({id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, messages: aiChatHistory.slice(), ts: Date.now()});
+    if(aiChatSessions.length > 50) aiChatSessions.length = 50;
+    await saveAiSessions();
+  }
+  async function startNewAiChat(){
+    if(!aiChatHistory.length){ toast('Already a new chat'); return; }
+    await archiveCurrentAiChat();
+    aiChatHistory = [];
+    await persistAiChat();
+    renderAiChat();
+    toast('Started a new chat');
+  }
+  function closeAiHistoryModal(){
+    const m = document.getElementById('ai-history-modal');
+    if(m) m.remove();
+  }
+  async function openAiHistoryModal(){
+    closeAiHistoryModal();
+    await loadAiSessions();
+    const listHtml = aiChatSessions.length ? aiChatSessions.map(s=>{
+      const d = new Date(s.ts).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      return `<div class="cmp-row" style="grid-template-columns:1fr auto;cursor:pointer;" data-session-id="${escAttr(s.id)}">
+        <div><div style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px;">${escHtml(s.title || 'Chat')}</div><div style="font-size:11.5px;color:var(--ink-soft);">${d} · ${s.messages.length} messages</div></div>
+        <button class="btn-del-icon" data-del-session="${escAttr(s.id)}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>
+      </div>`;
+    }).join('') : `<div class="modal-empty">No past chats yet.</div>`;
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'ai-history-modal';
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-box" style="max-width:480px;">
+        <div class="modal-head">
+          <div><h3>Chat History</h3><div class="modal-sub">Pick a past chat to continue it</div></div>
+          <button class="modal-close" id="ai-history-modal-close" title="Close">&times;</button>
+        </div>
+        <div class="modal-list">${listHtml}</div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="ai-history-modal-done">Close</button></div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    $('ai-history-modal-close').addEventListener('click', closeAiHistoryModal);
+    $('ai-history-modal-done').addEventListener('click', closeAiHistoryModal);
+    backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) closeAiHistoryModal(); });
+    backdrop.querySelectorAll('[data-del-session]').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const id = btn.getAttribute('data-del-session');
+        aiChatSessions = aiChatSessions.filter(s=>s.id !== id);
+        await saveAiSessions();
+        openAiHistoryModal();
+      });
+    });
+    backdrop.querySelectorAll('[data-session-id]').forEach(row=>{
+      row.addEventListener('click', async ()=>{
+        const id = row.getAttribute('data-session-id');
+        const session = aiChatSessions.find(s=>s.id === id);
+        if(!session) return;
+        await archiveCurrentAiChat();
+        aiChatSessions = aiChatSessions.filter(s=>s.id !== id);
+        await saveAiSessions();
+        aiChatHistory = session.messages.slice();
+        await persistAiChat();
+        renderAiChat();
+        closeAiHistoryModal();
+      });
+    });
+  }
+  async function sendAiMessage(){
+    if(aiSending) return;
+    const input = $('ai-chat-input');
+    const text = input.value.trim();
+    if(!text) return;
+    aiChatHistory.push({role:'user', content:text, ts:Date.now()});
+    input.value = '';
+    renderAiChat();
+    persistAiChat();
+    aiSending = true;
+    const sendBtn = $('ai-chat-send-btn');
+    if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+    try{
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          system: "You are a helpful assistant embedded inside a garment-factory 'Operation Bulletin' cost-sheet app used in Tamil Nadu, India. Always reply in English only, regardless of what language the user writes in. Keep answers clear and practical.",
+          messages: aiChatHistory.map(m=>({role:m.role, content:m.content}))
+        })
+      });
+      const data = await res.json();
+      if(!res.ok){
+        throw new Error((data && data.error && data.error.message) || ('API error ' + res.status));
+      }
+      let replyText = '';
+      if(data && Array.isArray(data.content)){
+        replyText = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
+      } else {
+        replyText = JSON.stringify(data);
+      }
+      aiChatHistory.push({role:'assistant', content: replyText || '(no reply)', ts:Date.now()});
+      renderAiChat();
+      persistAiChat();
+    }catch(e){
+      toast('Could not connect to AI: ' + e.message);
+    }finally{
+      aiSending = false;
+      if(sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    }
+  }
+  const aiSendBtn = $('ai-chat-send-btn');
+  if(aiSendBtn) aiSendBtn.addEventListener('click', sendAiMessage);
+  const aiInput = $('ai-chat-input');
+  if(aiInput) aiInput.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendAiMessage(); }
+  });
+  const aiHistoryBtn = $('ai-history-btn');
+  if(aiHistoryBtn) aiHistoryBtn.addEventListener('click', openAiHistoryModal);
+  const aiNewChatBtn = $('ai-newchat-btn');
+  if(aiNewChatBtn) aiNewChatBtn.addEventListener('click', startNewAiChat);
   // ---------- helpers ----------
   function escHtml(s){
     return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
