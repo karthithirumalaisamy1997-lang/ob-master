@@ -667,10 +667,6 @@ body.pdf-mode .md-hint{display:none !important;}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
         History
       </button>
-      <button class="side-nav-btn" data-tab="ai">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="14" rx="3"/><path d="M9 10h.01M15 10h.01"/><path d="M8 16h8"/><path d="M12 4V2"/></svg>
-        AI Assistant
-      </button>
     </nav>
     <div class="side-section-label">Admin</div>
     <nav class="side-nav no-print">
@@ -1004,7 +1000,6 @@ body.pdf-mode .md-hint{display:none !important;}
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="saved"> <span>Buyer wise OB Saved</span></label>
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="styles"> <span>Styles</span></label>
           <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="history"> <span>History</span></label>
-          <label class="chk-row"><input type="checkbox" class="user-menu-chk" value="ai"> <span>AI Assistant</span></label>
         </div>
         <div class="user-perm-note">Manage Users is available to Admin accounts only.</div>
 
@@ -1044,31 +1039,6 @@ body.pdf-mode .md-hint{display:none !important;}
         <div style="color:var(--ink-soft);font-size:12.5px;margin-bottom:12px;">Choose a previously downloaded backup file to restore it. This overwrites current data with what's in the file.</div>
         <input type="file" id="backup-import-input" accept="application/json,.json" style="display:none;">
         <button class="btn btn-ghost" id="backup-import-btn">Choose Backup File to Restore</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel" id="panel-ai">
-    <div class="card">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
-        <div>
-          <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;">
-            <span style="width:24px;height:24px;border-radius:7px;background:var(--teal);color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">A</span>
-            <h3 style="margin:0;font-family:'Space Grotesk';font-size:15.5px;font-weight:700;color:var(--navy);">AI Assistant</h3>
-          </div>
-          <p style="color:var(--ink-soft);font-size:12.5px;margin:0;max-width:560px;">Ask anything about SMV, OB, costing, TNA, or any general question — you'll get a clear answer in English.</p>
-        </div>
-        <div style="display:flex;gap:8px;flex-shrink:0;">
-          <button class="btn btn-ghost" id="ai-history-btn" style="font-size:12.5px;">History</button>
-          <button class="btn btn-primary" id="ai-newchat-btn" style="font-size:12.5px;">+ New Chat</button>
-        </div>
-      </div>
-
-      <div id="ai-chat-log" style="border:1px solid var(--line);border-radius:10px;padding:14px;min-height:280px;max-height:480px;overflow-y:auto;background:#fff;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
-
-      <div style="display:flex;gap:10px;align-items:center;">
-        <input type="text" id="ai-chat-input" placeholder="Type your question here…" style="flex:1;border:1.5px solid var(--ink);border-radius:24px;padding:12px 18px;font-family:'Inter';font-size:13.5px;outline:none;">
-        <button class="btn btn-primary" id="ai-chat-send-btn" style="border-radius:20px;padding:10px 22px;">Send</button>
       </div>
     </div>
   </div>
@@ -1450,10 +1420,16 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // old four keys as a one-time fallback so nobody who saved under the
     // previous version loses anything; once loaded, the very next save
     // writes it back out under the new combined key.
-    const [bundleRes, usRes, srRes] = await Promise.all([
+    // NOTE: the in-progress builder sheet ("New Style" screen) is deliberately
+    // NOT loaded here. It used to be fetched from one single shared key
+    // ('ob_current_sheet_v2') at startup, before anyone had even logged in —
+    // which meant every account saw whichever user last typed into New Style
+    // (their unsaved buyer/style/operations, even the "Unsaved changes"
+    // prompt firing for data that wasn't theirs). It's now loaded per-user,
+    // right after login, by loadUserSheet() — see completeLogin().
+    const [bundleRes, usRes] = await Promise.all([
       window.storage.get('ob_master_bundle').catch(()=>null),
-      window.storage.get('ob_users').catch(()=>null),
-      window.storage.get('ob_current_sheet_v2').catch(()=>null)
+      window.storage.get('ob_users').catch(()=>null)
     ]);
 
     let bundle = null;
@@ -1515,23 +1491,49 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(!appUsers.length){
       appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
     }
-    if(srRes && srRes.value){
-      try{
+  }
+
+  // Each signed-in user gets their own in-progress "New Style" draft, keyed
+  // by username, instead of everyone sharing one slot. Falls back to a
+  // 'guest' bucket only in the (unexpected) case nobody is signed in yet.
+  function currentSheetKey(){
+    return 'ob_current_sheet_v2:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
+  }
+
+  // Loads the signed-in user's own draft builder sheet. Called right after
+  // login (see completeLogin()) — never at app startup, so one person's
+  // in-progress style can never show up on someone else's screen. If this
+  // user has no draft saved yet, the builder is reset to blank instead of
+  // silently keeping whatever was left in memory from a previous session.
+  async function loadUserSheet(){
+    let applied = false;
+    try{
+      const srRes = await window.storage.get(currentSheetKey());
+      if(srRes && srRes.value){
         const parsed = JSON.parse(srRes.value);
         sheetSections = parsed.sections || [];
         sketchDataUrl = parsed.sketch || null;
-        if(parsed.header){
-          $('f-buyer').value = parsed.header.buyer || '';
-          $('f-style').value = parsed.header.style || '';
-          $('f-description').value = parsed.header.description || '';
-          $('f-planline').value = parsed.header.planline || '';
-          $('f-orderqty').value = parsed.header.orderqty || '';
-          $('f-leadtime').value = parsed.header.leadtime || '';
-          $('f-madeby').value = parsed.header.madeby || '';
-          $('f-ordereff').value = parsed.header.ordereff || '';
-        }
-      }catch(e){}
+        $('f-buyer').value = (parsed.header && parsed.header.buyer) || '';
+        $('f-style').value = (parsed.header && parsed.header.style) || '';
+        $('f-description').value = (parsed.header && parsed.header.description) || '';
+        $('f-planline').value = (parsed.header && parsed.header.planline) || '';
+        $('f-orderqty').value = (parsed.header && parsed.header.orderqty) || '';
+        $('f-leadtime').value = (parsed.header && parsed.header.leadtime) || '';
+        $('f-madeby').value = (parsed.header && parsed.header.madeby) || '';
+        $('f-ordereff').value = (parsed.header && parsed.header.ordereff) || '';
+        applied = true;
+      }
+    }catch(e){ /* nothing saved yet for this user — fall through to blank */ }
+    if(!applied){
+      sheetSections = [];
+      sketchDataUrl = null;
+      $('f-buyer').value = ''; $('f-style').value = ''; $('f-description').value = '';
+      $('f-planline').value = ''; $('f-orderqty').value = ''; $('f-leadtime').value = '';
+      $('f-madeby').value = ''; $('f-ordereff').value = '';
     }
+    openedSavedId = null;
+    pendingRevisionOf = null;
+    pendingRevisionLabel = null;
   }
 
   let saveTimer = null;
@@ -1597,7 +1599,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const labeled = [
       ['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))],
       ['Users', setWithRetry('ob_users', JSON.stringify(appUsers))],
-      ['Current sheet', setWithRetry('ob_current_sheet_v2', JSON.stringify(sheetPayload))]
+      ['Current sheet', setWithRetry(currentSheetKey(), JSON.stringify(sheetPayload))]
     ];
     const results = await Promise.allSettled(labeled.map(l => l[1]));
     const failed = results
@@ -1710,7 +1712,6 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(btn.dataset.tab === 'saved') renderSavedList();
       if(btn.dataset.tab === 'styles') renderStylesList();
       if(btn.dataset.tab === 'history') renderHistoryList();
-      if(btn.dataset.tab === 'ai') loadAiChat();
       if(btn.dataset.tab === 'dashboard') renderDashboard();
       closeSidebar();
       window.scrollTo({top:0, behavior:'smooth'});
@@ -5185,7 +5186,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   });
 
   // ---------- Manage Users ----------
-  const MENU_LABELS = {dashboard:'Dashboard', costsheet:'New Style / Operations', master:'Master Data', layout:'Layout', saved:'Buyer wise OB Saved', styles:'Styles', history:'History', ai:'AI Assistant', users:'Manage Users'};
+  const MENU_LABELS = {dashboard:'Dashboard', costsheet:'New Style / Operations', master:'Master Data', layout:'Layout', saved:'Buyer wise OB Saved', styles:'Styles', history:'History', users:'Manage Users'};
 
   function renderUsers(){
     $('user-list-label').textContent = 'Users (' + appUsers.length + ')';
@@ -5440,7 +5441,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(uploadBtn) uploadBtn.style.display = canUploadMd ? '' : 'none';
   }
 
-  function completeLogin(user, opts){
+  async function completeLogin(user, opts){
     currentUser = user;
     if(!(opts && opts.skipSessionSave)) saveSession(user.username);
     $('login-overlay').style.display = 'none';
@@ -5449,6 +5450,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     $('greetText').textContent = greet + ', ' + user.username + '!';
     goToTab('dashboard');
+    // Load THIS user's own in-progress New Style draft (not anyone else's)
+    // before drawing the builder screen.
+    await loadUserSheet();
     renderSketch();
     renderSections();
     renderDashboard();
@@ -5558,183 +5562,6 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     });
   }
 
-  // ---------- AI assistant (direct API key, no separate backend) ----------
-  let aiChatHistory = []; // [{role:'user'|'assistant', content, ts}]
-  let aiChatSessions = []; // [{id, title, messages, ts}]
-  let aiSending = false;
-
-  function aiHistoryKey(){
-    return 'ai_chat_history:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
-  }
-  function aiSessionsKey(){
-    return 'ai_chat_sessions:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
-  }
-  async function loadAiSessions(){
-    try{
-      const res = await window.storage.get(aiSessionsKey());
-      aiChatSessions = (res && res.value) ? JSON.parse(res.value) : [];
-    }catch(e){ aiChatSessions = []; }
-  }
-  async function saveAiSessions(){
-    try{ await window.storage.set(aiSessionsKey(), JSON.stringify(aiChatSessions)); }catch(e){}
-  }
-  async function loadAiChat(){
-    try{
-      const histRes = await window.storage.get(aiHistoryKey());
-      aiChatHistory = (histRes && histRes.value) ? JSON.parse(histRes.value) : [];
-    }catch(e){ aiChatHistory = []; }
-    await loadAiSessions();
-    renderAiChat();
-  }
-  function renderAiChat(){
-    const log = $('ai-chat-log');
-    if(!log) return;
-    if(!aiChatHistory.length){
-      log.innerHTML = `<div style="align-self:flex-start;max-width:88%;background:var(--paper-2);color:var(--ink);padding:14px 16px;border-radius:12px;font-size:13.5px;line-height:1.7;">
-        Hi! 👋 Welcome to Smart DataOB Assistant!<br><br>
-        How can I help you today? You can ask me about:<br><br>
-        <strong>Garment Manufacturing</strong> — SMV, OB, Line Efficiency, CM Costing, Fabric Consumption, TNA...<br><br>
-        <strong>General Questions</strong> — Anything else you want to know!<br><br>
-        What's on your mind?
-      </div>`;
-      return;
-    }
-    log.innerHTML = aiChatHistory.map(m=>{
-      const isUser = m.role === 'user';
-      return '<div style="align-self:'+(isUser ? 'flex-end' : 'flex-start')+';max-width:80%;background:'+(isUser ? 'var(--navy)' : 'var(--paper-2)')+';color:'+(isUser ? '#fff' : 'var(--ink)')+';padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;">'+escHtml(m.content)+'</div>';
-    }).join('');
-    log.scrollTop = log.scrollHeight;
-  }
-  async function persistAiChat(){
-    try{ await window.storage.set(aiHistoryKey(), JSON.stringify(aiChatHistory)); }catch(e){}
-  }
-  async function archiveCurrentAiChat(){
-    if(!aiChatHistory.length) return;
-    const firstUser = aiChatHistory.find(m=>m.role==='user');
-    const title = firstUser ? firstUser.content.slice(0,60) : 'Chat';
-    aiChatSessions.unshift({id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, messages: aiChatHistory.slice(), ts: Date.now()});
-    if(aiChatSessions.length > 50) aiChatSessions.length = 50;
-    await saveAiSessions();
-  }
-  async function startNewAiChat(){
-    if(!aiChatHistory.length){ toast('Already a new chat'); return; }
-    await archiveCurrentAiChat();
-    aiChatHistory = [];
-    await persistAiChat();
-    renderAiChat();
-    toast('Started a new chat');
-  }
-  function closeAiHistoryModal(){
-    const m = document.getElementById('ai-history-modal');
-    if(m) m.remove();
-  }
-  async function openAiHistoryModal(){
-    closeAiHistoryModal();
-    await loadAiSessions();
-    const listHtml = aiChatSessions.length ? aiChatSessions.map(s=>{
-      const d = new Date(s.ts).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-      return `<div class="cmp-row" style="grid-template-columns:1fr auto;cursor:pointer;" data-session-id="${escAttr(s.id)}">
-        <div><div style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px;">${escHtml(s.title || 'Chat')}</div><div style="font-size:11.5px;color:var(--ink-soft);">${d} · ${s.messages.length} messages</div></div>
-        <button class="btn-del-icon" data-del-session="${escAttr(s.id)}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>
-      </div>`;
-    }).join('') : `<div class="modal-empty">No past chats yet.</div>`;
-
-    const backdrop = document.createElement('div');
-    backdrop.id = 'ai-history-modal';
-    backdrop.className = 'modal-backdrop';
-    backdrop.innerHTML = `
-      <div class="modal-box" style="max-width:480px;">
-        <div class="modal-head">
-          <div><h3>Chat History</h3><div class="modal-sub">Pick a past chat to continue it</div></div>
-          <button class="modal-close" id="ai-history-modal-close" title="Close">&times;</button>
-        </div>
-        <div class="modal-list">${listHtml}</div>
-        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="ai-history-modal-done">Close</button></div>
-      </div>
-    `;
-    document.body.appendChild(backdrop);
-    $('ai-history-modal-close').addEventListener('click', closeAiHistoryModal);
-    $('ai-history-modal-done').addEventListener('click', closeAiHistoryModal);
-    backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) closeAiHistoryModal(); });
-    backdrop.querySelectorAll('[data-del-session]').forEach(btn=>{
-      btn.addEventListener('click', async (e)=>{
-        e.stopPropagation();
-        const id = btn.getAttribute('data-del-session');
-        aiChatSessions = aiChatSessions.filter(s=>s.id !== id);
-        await saveAiSessions();
-        openAiHistoryModal();
-      });
-    });
-    backdrop.querySelectorAll('[data-session-id]').forEach(row=>{
-      row.addEventListener('click', async ()=>{
-        const id = row.getAttribute('data-session-id');
-        const session = aiChatSessions.find(s=>s.id === id);
-        if(!session) return;
-        await archiveCurrentAiChat();
-        aiChatSessions = aiChatSessions.filter(s=>s.id !== id);
-        await saveAiSessions();
-        aiChatHistory = session.messages.slice();
-        await persistAiChat();
-        renderAiChat();
-        closeAiHistoryModal();
-      });
-    });
-  }
-  async function sendAiMessage(){
-    if(aiSending) return;
-    const input = $('ai-chat-input');
-    const text = input.value.trim();
-    if(!text) return;
-    aiChatHistory.push({role:'user', content:text, ts:Date.now()});
-    input.value = '';
-    renderAiChat();
-    persistAiChat();
-    aiSending = true;
-    const sendBtn = $('ai-chat-send-btn');
-    if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
-    try{
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
-          system: "You are a helpful assistant embedded inside a garment-factory 'Operation Bulletin' cost-sheet app used in Tamil Nadu, India. Always reply in English only, regardless of what language the user writes in. Keep answers clear and practical.",
-          messages: aiChatHistory.map(m=>({role:m.role, content:m.content}))
-        })
-      });
-      const data = await res.json();
-      if(!res.ok){
-        throw new Error((data && data.error && data.error.message) || ('API error ' + res.status));
-      }
-      let replyText = '';
-      if(data && Array.isArray(data.content)){
-        replyText = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
-      } else {
-        replyText = JSON.stringify(data);
-      }
-      aiChatHistory.push({role:'assistant', content: replyText || '(no reply)', ts:Date.now()});
-      renderAiChat();
-      persistAiChat();
-    }catch(e){
-      toast('Could not connect to AI: ' + e.message);
-    }finally{
-      aiSending = false;
-      if(sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
-    }
-  }
-  const aiSendBtn = $('ai-chat-send-btn');
-  if(aiSendBtn) aiSendBtn.addEventListener('click', sendAiMessage);
-  const aiInput = $('ai-chat-input');
-  if(aiInput) aiInput.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendAiMessage(); }
-  });
-  const aiHistoryBtn = $('ai-history-btn');
-  if(aiHistoryBtn) aiHistoryBtn.addEventListener('click', openAiHistoryModal);
-  const aiNewChatBtn = $('ai-newchat-btn');
-  if(aiNewChatBtn) aiNewChatBtn.addEventListener('click', startNewAiChat);
   // ---------- helpers ----------
   function escHtml(s){
     return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
