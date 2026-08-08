@@ -70,6 +70,33 @@ nav.side-nav{padding:0 10px;display:flex;flex-direction:column;gap:2px;}
   .sidebar-backdrop.show{display:block;}
 }
 
+/* ===== notification bell ===== */
+.notif-bell-btn{position:fixed;top:16px;right:18px;z-index:70;background:#fff;border:1px solid var(--line);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow);}
+.notif-bell-btn svg{width:18px;height:18px;color:var(--navy);}
+.notif-badge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;box-shadow:0 0 0 2px #fff;}
+.notif-panel{position:fixed;top:62px;right:18px;z-index:70;width:320px;max-width:calc(100vw - 32px);max-height:70vh;overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(11,35,64,.18);display:none;}
+.notif-panel.open{display:block;}
+.notif-panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--paper-2);}
+.notif-panel-head h4{margin:0;font-family:'Space Grotesk';font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;}
+.notif-mark-all{border:none;background:none;color:var(--teal-dark);font-size:11.5px;font-weight:700;cursor:pointer;}
+.notif-item{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid var(--paper-2);cursor:pointer;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--paper-2);}
+.notif-item.unread{background:rgba(22,163,148,.06);}
+.notif-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;margin-top:5px;}
+.notif-item:not(.unread) .notif-dot{background:transparent;}
+.notif-body{min-width:0;}
+.notif-msg{font-size:12.5px;color:var(--ink);line-height:1.4;font-weight:600;}
+.notif-meta{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
+.notif-type-tag{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:1px 6px;border-radius:10px;margin-right:6px;background:rgba(11,35,64,.08);color:var(--navy);}
+.notif-empty{padding:30px 16px;text-align:center;color:var(--ink-soft);font-size:12.5px;}
+.notif-highlight{animation:notifFlash 1.8s ease;}
+@keyframes notifFlash{0%{background:rgba(226,163,53,.35);}100%{background:transparent;}}
+@media (max-width:880px){
+  .notif-bell-btn{top:14px;right:14px;}
+  .notif-panel{top:58px;right:10px;}
+}
+
 /* header */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
 .brand{display:flex;align-items:center;gap:12px;}
@@ -685,6 +712,18 @@ body.pdf-mode .md-hint{display:none !important;}
     </nav>
   </aside>
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <button class="notif-bell-btn no-print" id="notif-bell-btn" aria-label="Notifications" title="Notifications">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+    <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
+  </button>
+  <div class="notif-panel no-print" id="notif-panel">
+    <div class="notif-panel-head">
+      <h4>Notifications</h4>
+      <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
+    </div>
+    <div id="notif-list"></div>
+  </div>
 
   <div class="main-col">
   <div class="app">
@@ -1715,13 +1754,187 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(btn.dataset.tab === 'dashboard') renderDashboard();
       closeSidebar();
       window.scrollTo({top:0, behavior:'smooth'});
+      // Push a history entry for this tab so the browser/device Back button
+      // steps back through the tabs the person has visited, instead of
+      // leaving the app straight away. When we're replaying a Back/Forward
+      // press ourselves (see popstate handler below) we skip this so we
+      // don't create a brand new entry on top of the one being restored.
+      if(!suppressHistoryPush){
+        try{ history.pushState({tab: btn.dataset.tab}, ''); }catch(err){}
+      }
     });
   });
+
+  // ---------- back-button (history) navigation ----------
+  // Wrapped in try/catch throughout: some embedded/sandboxed viewers block
+  // the History API entirely and throw a SecurityError. Without the guard
+  // that error would stop this whole script from running, so the app would
+  // fail to load. If history access is blocked, we just skip this feature
+  // silently and the rest of the app works as before.
+  let suppressHistoryPush = false;
+  try{
+    // Base entry: Back from the very first tab leaves the app, as expected.
+    history.replaceState({tab: 'dashboard'}, '');
+    window.addEventListener('popstate', (e)=>{
+      const tab = (e.state && e.state.tab) || 'dashboard';
+      const btn = document.querySelector('.side-nav-btn[data-tab="'+tab+'"]');
+      if(!btn) return;
+      suppressHistoryPush = true;
+      btn.click();
+      suppressHistoryPush = false;
+    });
+  }catch(err){}
 
   function goToTab(tabName){
     const btn = document.querySelector('.side-nav-btn[data-tab="'+tabName+'"]');
     if(btn) btn.click();
   }
+
+  // ---------- notifications (Master Data / Style / Section added) ----------
+  // Shared across every user in real time via Firebase (same DB the rest of
+  // the app already uses). Read/unread is tracked per-device in localStorage
+  // since notifications themselves are shared, but "have I seen this" is personal.
+  let notifications = [];
+  let notifReadIds = new Set();
+  try{ notifReadIds = new Set(JSON.parse(localStorage.getItem('ob_notif_read') || '[]')); }catch(e){}
+  const NOTIF_TYPE_LABEL = {master:'Master Data', style:'Style', section:'Section'};
+
+  function saveNotifReadIds(){
+    try{ localStorage.setItem('ob_notif_read', JSON.stringify([...notifReadIds].slice(-300))); }catch(e){}
+  }
+
+  function notifTimeAgo(ts){
+    const s = Math.floor((Date.now() - (ts||0)) / 1000);
+    if(s < 60) return 'just now';
+    const m = Math.floor(s/60); if(m < 60) return m + 'm ago';
+    const h = Math.floor(m/60); if(h < 24) return h + 'h ago';
+    const d = Math.floor(h/24); return d + 'd ago';
+  }
+
+  // Writes a new notification that every signed-in user will see. Called right
+  // after a Master Data operation, a new style, or a new section is added.
+  function pushNotification(type, msg, nav){
+    if(!fbDb) return; // no shared backend reachable — skip quietly, rest of the app still works
+    try{
+      fbDb.ref('ob_notifications').push({
+        type: type,
+        msg: msg,
+        by: currentUser ? currentUser.username : 'Someone',
+        at: Date.now(),
+        nav: nav || null
+      });
+    }catch(e){}
+  }
+
+  function renderNotifBadge(){
+    const badge = $('notif-badge');
+    if(!badge) return;
+    const unread = notifications.filter(n => !notifReadIds.has(n.id)).length;
+    if(unread > 0){ badge.style.display = 'flex'; badge.textContent = unread > 99 ? '99+' : String(unread); }
+    else badge.style.display = 'none';
+  }
+
+  function renderNotifPanel(){
+    const list = $('notif-list');
+    if(!list) return;
+    if(!notifications.length){
+      list.innerHTML = '<div class="notif-empty">No notifications yet — Master Data, Style, and Section updates will show up here.</div>';
+      return;
+    }
+    list.innerHTML = notifications.map(n=>{
+      const unread = !notifReadIds.has(n.id);
+      return `<div class="notif-item ${unread ? 'unread' : ''}" data-id="${escAttr(n.id)}">
+        <div class="notif-dot"></div>
+        <div class="notif-body">
+          <div class="notif-msg"><span class="notif-type-tag">${escHtml(NOTIF_TYPE_LABEL[n.type] || 'Update')}</span>${escHtml(n.msg || '')}</div>
+          <div class="notif-meta">${escHtml(n.by || 'Someone')} · ${notifTimeAgo(n.at)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.notif-item').forEach(item=>{
+      item.addEventListener('click', ()=>{
+        const n = notifications.find(x => x.id === item.dataset.id);
+        if(!n) return;
+        notifReadIds.add(n.id);
+        saveNotifReadIds();
+        renderNotifBadge();
+        renderNotifPanel();
+        closeNotifPanel();
+        notifNavigate(n.nav);
+      });
+    });
+  }
+
+  // Takes the person to whatever the notification is about: Master Data /
+  // Style notifications open that style's group in Master Data (scrolled into
+  // view and briefly highlighted); Section notifications do the same, since a
+  // section is just a Master Data group dropped into a sheet.
+  function notifNavigate(nav){
+    if(!nav || !nav.tab) return;
+    goToTab(nav.tab);
+    if(nav.tab === 'master' && nav.style){
+      mdFolderFilter = mdStyleFolder[nav.style] || null;
+      mdSelectedStyle = nav.style;
+      mdSelectedRow = null;
+      const search = $('md-search-input');
+      if(search) search.value = '';
+      renderMasterTab();
+      setTimeout(()=>{
+        let el = null;
+        document.querySelectorAll('.md-group').forEach(g=>{ if(g.dataset.group === nav.style) el = g; });
+        if(el){
+          el.scrollIntoView({behavior:'smooth', block:'center'});
+          el.classList.add('notif-highlight');
+          setTimeout(()=> el.classList.remove('notif-highlight'), 1800);
+        }
+      }, 60);
+    }
+  }
+
+  function closeNotifPanel(){
+    const panel = $('notif-panel');
+    if(panel) panel.classList.remove('open');
+  }
+
+  const notifBellBtn = $('notif-bell-btn');
+  const notifPanelEl = $('notif-panel');
+  if(notifBellBtn && notifPanelEl){
+    notifBellBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      notifPanelEl.classList.toggle('open');
+    });
+    document.addEventListener('click', (e)=>{
+      if(notifPanelEl.classList.contains('open') && !e.target.closest('.notif-panel') && !e.target.closest('.notif-bell-btn')){
+        closeNotifPanel();
+      }
+    });
+  }
+  const notifMarkAllBtn = $('notif-mark-all');
+  if(notifMarkAllBtn){
+    notifMarkAllBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      notifications.forEach(n => notifReadIds.add(n.id));
+      saveNotifReadIds();
+      renderNotifBadge();
+      renderNotifPanel();
+    });
+  }
+
+  // Live sync: every signed-in user's bell updates in real time as soon as
+  // anyone adds Master Data / a Style / a Section — no refresh needed, and it
+  // also picks up anything added while the app was closed, the moment it opens.
+  function startNotifListener(){
+    if(!fbDb) return;
+    try{
+      fbDb.ref('ob_notifications').orderByChild('at').limitToLast(60).on('value', (snap)=>{
+        const val = snap.val() || {};
+        notifications = Object.keys(val).map(id => ({id, ...val[id]})).sort((a,b) => (b.at||0) - (a.at||0));
+        renderNotifBadge();
+        renderNotifPanel();
+      });
+    }catch(e){}
+  }
+  startNotifListener();
 
   // ---------- mobile sidebar toggle ----------
   const sidebarEl = $('sidebar');
@@ -3054,6 +3267,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       renderSections();
       schedulePersist();
       toast(group + ' section added with ' + ops.length + ' operations — remove any you don\'t need');
+      pushNotification('section', 'added section "' + group + '" to a cost sheet', {tab:'master', style:group});
     }
 
     function wireRows(){
@@ -3272,6 +3486,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       renderMdRows();
       schedulePersist();
       toast('New style "' + group + '" created' + (chosenFolder ? ' in "' + mdFolders[chosenFolder].name + '"' : '') + ' and added to this sheet');
+      pushNotification('style', 'created new style "' + group + '"', {tab:'master', style:group});
     });
 
     $('add-style-modal-close').addEventListener('click', closeAddStyleModal);
@@ -4894,6 +5109,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     renderSections();
     schedulePersist();
     toast('Operation added' + (mdSelectedRow ? ' after selected row' : ''));
+    pushNotification('master', 'added operation "' + name + '" to "' + style + '"', {tab:'master', style:style});
   }
 
   $('new-op-save').addEventListener('click', ()=>{
@@ -5040,6 +5256,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     renderSections();
     schedulePersist();
     toast('New operation group "' + group + '" created with ' + rows.length + ' operation' + (rows.length === 1 ? '' : 's') + (chosenFolder ? ' in "' + mdFolders[chosenFolder].name + '"' : ''));
+    pushNotification('style', 'created new style "' + group + '" with ' + rows.length + ' operation' + (rows.length === 1 ? '' : 's'), {tab:'master', style:group});
   });
 
   function renderMasterTab(){
