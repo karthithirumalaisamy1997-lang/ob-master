@@ -442,6 +442,15 @@ tr.op-add-inline td{background:#FBFAF6;vertical-align:top;padding:10px 8px;}
   .as-modal-full-box .as-folder-browser-full{flex-direction:column;}
 }
 .as-folder-empty{padding:12px;font-size:13.5px;color:var(--ink-soft);}
+.as-style-item{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.as-style-item .as-style-meta{font-size:11.5px;font-weight:600;color:var(--ink-soft);flex-shrink:0;}
+.as-style-item.active .as-style-meta{color:rgba(255,255,255,.85);}
+.as-name-field{margin:16px 0;}
+.as-name-field label{display:block;font-size:12.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
+.as-name-field input{width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:14.5px;outline:none;}
+.as-name-field input:focus{border-color:var(--teal);}
+.as-section-label{font-size:12.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);margin:18px 0 8px;}
+.as-source-hint{font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-top:8px;}
 .as-rows-hint{padding:10px 2px;font-size:12.5px;color:var(--ink-soft);}
 .create-op-rows{display:flex;flex-direction:column;gap:8px;}
 .create-op-row{display:grid;grid-template-columns:1.4fr 0.8fr 0.6fr auto;gap:8px;align-items:center;}
@@ -3310,95 +3319,46 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     openAddSectionModal(insertAt);
   });
 
-  // ---------- Add Style: create a brand-new style right from the New Style screen by picking an ----------
-  // existing Master Data folder — its operations are copied in automatically and the style is
-  // dropped into this sheet as a new section.
-  let asChosenFolder = ''; // folderId currently chosen as destination in the Add Style modal ('' = Unfiled)
-  let asChosenMain = '';   // main folder currently expanded in the Add Style modal's folder browser
+  // ---------- Add Style: add a new section to THIS cost sheet only, copied from an existing ----------
+  // Master Data style. This NEVER writes anything back into Master Data — no new style, no new
+  // section, no folder entry gets created there. It only affects the sheet you're working on.
+  let asChosenStyle = '';  // the ONE existing Master Data style picked as the copy source — only ITS OWN
+                            // operations are copied; nothing from any other style leaks in.
+  let asStyleSearchQuery = '';
 
-  function stylesInFolder(folderId){
-    return styleList().filter(s=>mdStyleFolder[s] === folderId);
-  }
-  // Every operation from every style filed in a folder, deduped by operation name.
-  function combinedOpsForFolder(folderId){
-    const ops = [];
-    stylesInFolder(folderId).forEach(s=>{
-      (masterData[s] || []).forEach(o=>{
-        if(!ops.some(x=>x.op.toLowerCase() === (o.op||'').toLowerCase())){
-          ops.push({op:o.op, mc:o.mc, smv:o.smv});
-        }
-      });
-    });
-    return ops;
-  }
-
-  function uniqueStyleNameFromBase(base){
-    let candidate = base;
-    let n = 2;
-    while(masterData[candidate]){
-      candidate = base + ' ' + n;
-      n++;
-    }
-    return candidate;
-  }
-
-  function uniqueStyleNameFromBase(base){
-    let candidate = base;
-    let n = 2;
-    while(masterData[candidate]){
-      candidate = base + ' ' + n;
-      n++;
-    }
-    return candidate;
-  }
-
-  let asFolderSearchQuery = '';
-
-  function renderAsMainList(){
-    const wrap = $('add-style-mainlist');
-    const q = asFolderSearchQuery.trim().toLowerCase();
-    let mains = mdMainFolderIds();
-    if(q) mains = mains.filter(id=>mdFolders[id].name.toLowerCase().includes(q));
-    const showUnfiled = !q || 'unfiled'.includes(q) || 'all operations'.includes(q);
-    let html = showUnfiled ? `<button type="button" class="as-folder-item ${asChosenFolder==='' && asChosenMain==='' ? 'active':''}" data-main="">All Operations</button>` : '';
-    if(!mains.length && !showUnfiled){
-      html += `<div class="as-folder-empty">No folders match "${escHtml(asFolderSearchQuery)}".</div>`;
-    } else {
-      mains.forEach(id=>{
-        html += `<button type="button" class="as-folder-item ${asChosenMain===id ? 'active':''}" data-main="${id}">${escHtml(mdFolders[id].name)}</button>`;
-      });
-    }
-    wrap.innerHTML = html;
-    wrap.querySelectorAll('.as-folder-item').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const id = btn.dataset.main;
-        asChosenMain = id;
-        asChosenFolder = id; // selecting a main folder alone files the style directly in it
-        renderAsMainList();
-        renderAsSubList();
-      });
-    });
-  }
-
-  function renderAsSubList(){
-    const wrap = $('add-style-sublist');
-    if(!asChosenMain){
-      wrap.innerHTML = `<div class="as-folder-empty">Click a main folder above to see its subfolders.</div>`;
+  // ---- pick the single style to copy from (its own rows only) ----
+  function renderAsStyleList(){
+    const wrap = $('add-style-stylelist');
+    if(!wrap) return;
+    const q = asStyleSearchQuery.trim().toLowerCase();
+    let styles = styleList();
+    if(q) styles = styles.filter(s=>s.toLowerCase().includes(q));
+    if(!styles.length){
+      wrap.innerHTML = `<div class="as-folder-empty">No styles match "${escHtml(asStyleSearchQuery)}".</div>`;
       return;
     }
-    const subs = mdSubFolderIds(asChosenMain);
-    if(!subs.length){
-      wrap.innerHTML = `<div class="as-folder-empty">No subfolders in "${escHtml(mdFolders[asChosenMain].name)}" — the style will be filed directly in it.</div>`;
-      return;
-    }
-    wrap.innerHTML = subs.map(id=>`<button type="button" class="as-folder-item sub ${asChosenFolder===id ? 'active':''}" data-sub="${id}">${escHtml(mdFolders[id].name)}</button>`).join('');
-    wrap.querySelectorAll('.as-folder-item').forEach(btn=>{
-      const id = btn.dataset.sub;
+    wrap.innerHTML = styles.map(s=>{
+      const n = (masterData[s] || []).length;
+      const folderName = mdStyleFolder[s] && mdFolders[mdStyleFolder[s]] ? mdFolders[mdStyleFolder[s]].name : 'Unfiled';
+      return `<button type="button" class="as-folder-item as-style-item ${asChosenStyle===s ? 'active':''}" data-style="${escAttr(s)}">
+        <span>${escHtml(s)}</span>
+        <span class="as-style-meta">${n} op${n===1?'':'s'} · ${escHtml(folderName)}</span>
+      </button>`;
+    }).join('');
+    wrap.querySelectorAll('.as-style-item').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        asChosenFolder = id;
-        renderAsSubList();
+        asChosenStyle = btn.dataset.style;
+        const nameInput = $('add-style-name-input');
+        if(nameInput) nameInput.value = asChosenStyle;
+        renderAsStyleList();
+        updateAsSaveState();
       });
     });
+  }
+
+  function updateAsSaveState(){
+    const btn = $('add-style-save');
+    if(btn) btn.disabled = !asChosenStyle;
   }
 
   function closeAddStyleModal(){
@@ -3410,19 +3370,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     closeAddStyleModal();
     $('add-op-manual-form').style.display = 'none';
     const hasAnchor = typeof insertAt === 'number';
-    asFolderSearchQuery = '';
-
-    // default the browser to wherever the person is currently browsing in Master Data's folder tree
-    asChosenFolder = ''; asChosenMain = '';
-    if(mdFolderFilter && mdFolderFilter !== '__unfiled__' && mdFolders[mdFolderFilter]){
-      if(mdFolders[mdFolderFilter].parentId){
-        asChosenMain = mdFolders[mdFolderFilter].parentId;
-        asChosenFolder = mdFolderFilter;
-      } else {
-        asChosenMain = mdFolderFilter;
-        asChosenFolder = mdFolderFilter;
-      }
-    }
+    asStyleSearchQuery = '';
+    asChosenStyle = '';
 
     const backdrop = document.createElement('div');
     backdrop.id = 'add-style-modal';
@@ -3432,61 +3381,58 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         <div class="modal-head">
           <div>
             <h3>Add Style</h3>
-            <div class="modal-sub">Click a main folder, then a subfolder, and hit Save Style — its operations come along automatically.</div>
+            <div class="modal-sub">Pick ONE existing style below to copy its operations into THIS sheet. Master Data is never changed — no new style or section gets created there.</div>
           </div>
           <button class="modal-close" id="add-style-modal-close" title="Close">&times;</button>
         </div>
-        <div class="as-folder-search"><input type="text" id="add-style-folder-search" placeholder="Search folders..."></div>
-        <div class="as-folder-browser as-folder-browser-full">
-          <div class="as-folder-col">
-            <label>Main Folder</label>
-            <div class="as-folder-list as-folder-list-full" id="add-style-mainlist"></div>
-          </div>
-          <div class="as-folder-col">
-            <label>Subfolder</label>
-            <div class="as-folder-list as-folder-list-full" id="add-style-sublist"></div>
-          </div>
+        <div class="as-section-label">1. Pick a style to copy</div>
+        <div class="as-folder-search"><input type="text" id="add-style-style-search" placeholder="Search styles..."></div>
+        <div class="as-folder-list" id="add-style-stylelist" style="max-height:320px;"></div>
+
+        <div class="as-name-field">
+          <label>2. Section name on this sheet</label>
+          <input type="text" id="add-style-name-input" placeholder="Pick a style above first...">
         </div>
         <div class="modal-foot">
           <button class="btn btn-ghost btn-sm" id="add-style-cancel">Cancel</button>
-          <button class="btn btn-primary btn-sm" id="add-style-save">Save Style</button>
+          <button class="btn btn-primary btn-sm" id="add-style-save" disabled>Add to Sheet</button>
         </div>
       </div>
     `;
     document.body.appendChild(backdrop);
 
-    renderAsMainList();
-    renderAsSubList();
+    renderAsStyleList();
+    updateAsSaveState();
 
-    $('add-style-folder-search').addEventListener('input', (e)=>{
-      asFolderSearchQuery = e.target.value;
-      renderAsMainList();
+    $('add-style-style-search').addEventListener('input', (e)=>{
+      asStyleSearchQuery = e.target.value;
+      renderAsStyleList();
     });
 
     $('add-style-save').addEventListener('click', ()=>{
-      const chosenFolder = asChosenFolder;
-      const rows = chosenFolder ? combinedOpsForFolder(chosenFolder) : [];
-      if(!rows.length){ toast('That folder has no operations yet — pick a different folder'); return; }
+      if(!asChosenStyle){ toast('Pick a style to copy from first'); return; }
+      // Only the chosen style's OWN operations are copied — never combined/extra
+      // data pulled in from sibling styles that happen to share its folder.
+      const sourceRows = masterData[asChosenStyle] || [];
+      if(!sourceRows.length){ toast('That style has no operations yet — pick a different style'); return; }
 
-      const baseName = (chosenFolder && mdFolders[chosenFolder]) ? mdFolders[chosenFolder].name.trim().toUpperCase() : 'NEW STYLE';
-      const group = uniqueStyleNameFromBase(baseName);
+      const typedName = ($('add-style-name-input').value || '').trim().toUpperCase();
+      // The name only labels this section on THIS sheet — it is never written back
+      // into Master Data, so it never needs to be unique against masterData keys.
+      const group = typedName || asChosenStyle;
+      const rows = sourceRows.map(o=>({op:o.op, mc:o.mc, smv:o.smv}));
 
       pushUndo();
-      masterData[group] = rows;
-      if(chosenFolder) mdStyleFolder[group] = chosenFolder;
-
-      // drop it into this OB sheet as a new section too
+      // Intentionally NOT touching masterData / mdStyleFolder here — adding a style
+      // to a cost sheet must never create a new style or section in Master Data.
+      // It only drops a new section into THIS sheet, copied from the picked style.
       const at = hasAnchor ? insertAt : sheetSections.length;
       sheetSections.splice(at, 0, { group: group, rows: rows.map(o=>({op:o.op, mc:o.mc, smv:o.smv})) });
 
       closeAddStyleModal();
       renderSections();
-      renderFolderTree();
-      renderStylePills();
-      renderMdRows();
       schedulePersist();
-      toast('New style "' + group + '" created' + (chosenFolder ? ' in "' + mdFolders[chosenFolder].name + '"' : '') + ' and added to this sheet');
-      pushNotification('style', 'created new style "' + group + '"', {tab:'master', style:group});
+      toast('"' + group + '" added to this sheet, copied from "' + asChosenStyle + '"');
     });
 
     $('add-style-modal-close').addEventListener('click', closeAddStyleModal);
