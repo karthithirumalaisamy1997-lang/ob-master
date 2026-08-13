@@ -402,6 +402,7 @@ tr.op-add-inline td{background:#FBFAF6;vertical-align:top;padding:10px 8px;}
 .md-folder-row.active{background:var(--teal-dark);color:#fff;}
 .md-folder-row .folder-chev{width:12px;height:12px;flex-shrink:0;transition:transform .15s ease;opacity:.6;}
 .md-folder-row.sub{margin-left:22px;font-weight:500;font-size:12.5px;}
+.as-back-row{color:var(--teal-dark);font-weight:700;margin-bottom:4px;}
 .md-folder-row.no-children .folder-chev{visibility:hidden;}
 .md-folder-row .folder-chev.open{transform:rotate(90deg);}
 .md-folder-row .folder-cnt{margin-left:auto;font-size:11px;font-weight:600;opacity:.65;}
@@ -429,20 +430,26 @@ tr.op-add-inline td{background:#FBFAF6;vertical-align:top;padding:10px 8px;}
 .as-folder-col label{display:block;font-size:12.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
 .as-folder-hint{font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink-soft);font-size:11.5px;}
 .as-folder-list{border:1px solid var(--line);border-radius:10px;max-height:320px;overflow-y:auto;background:#fff;padding:5px;}
-.as-folder-item{display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:none;border-radius:8px;font-size:15px;font-weight:600;color:var(--ink);cursor:pointer;}
+.as-folder-item{display:block;width:100%;text-align:left;padding:7px 9px;border:none;background:none;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;user-select:none;}
 .as-folder-item:hover{background:var(--paper-2);}
-.as-folder-item.active{background:var(--teal);color:#fff;}
-.as-folder-item.sub{padding-left:20px;}
+.as-folder-item.active{background:var(--teal-dark);color:#fff;}
+.as-folder-item.sub{padding-left:20px;font-weight:500;font-size:12.5px;}
 .modal-backdrop.as-modal-full{padding:0;align-items:stretch;justify-content:stretch;}
 .modal-box.as-modal-full-box{width:100%;max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;}
 .as-modal-full-box .as-folder-browser-full{flex:1 1 auto;display:flex;flex-wrap:nowrap;min-height:0;}
 .as-modal-full-box .as-folder-browser-full .as-folder-col{display:flex;flex-direction:column;min-height:0;}
 .as-modal-full-box .as-folder-list-full{flex:1 1 auto;max-height:none;}
+.as-modal-full-box .as-folder-browser-full .md-folder-tree{flex:1 1 auto;max-height:none;margin-bottom:0;}
 @media (max-width:640px){
   .as-modal-full-box .as-folder-browser-full{flex-direction:column;}
 }
 .as-folder-empty{padding:12px;font-size:13.5px;color:var(--ink-soft);}
 .as-style-item{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.as-style-group-head{display:flex;align-items:center;gap:7px;padding:9px 10px 5px;margin-top:6px;font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);}
+.as-style-group-head:first-child{margin-top:0;}
+.as-style-group-head svg{width:13px;height:13px;flex-shrink:0;opacity:.7;}
+.as-style-group-head.sub{padding-left:26px;}
+.as-style-item.sub{padding-left:20px;}
 .as-style-item .as-style-meta{font-size:11.5px;font-weight:600;color:var(--ink-soft);flex-shrink:0;}
 .as-style-item.active .as-style-meta{color:rgba(255,255,255,.85);}
 .as-name-field{margin:16px 0;}
@@ -3324,32 +3331,71 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // section, no folder entry gets created there. It only affects the sheet you're working on.
   let asChosenStyle = '';  // the ONE existing Master Data style picked as the copy source — only ITS OWN
                             // operations are copied; nothing from any other style leaks in.
-  let asStyleSearchQuery = '';
+  let asChosenFolder = null;   // subfolder currently selected — the style filed inside it becomes asChosenStyle
+  let asMainFilter = null;     // main folder currently selected on the LEFT — drives which subfolders
+                                // show on the RIGHT
 
-  // ---- pick the single style to copy from (its own rows only) ----
+  // ---- LEFT side: main folders only, flat — no expand-in-place, no subfolder rows here ----
+  function renderAsFolderTree(){
+    const wrap = $('add-style-folder-tree');
+    if(!wrap) return;
+    const mains = mdMainFolderIds();
+    let html = '';
+    if(!mains.length){
+      html = `<div class="md-folder-empty-hint">No folders yet.</div>`;
+    }
+    mains.forEach(id=>{
+      html += `<div class="md-folder-row no-children ${asMainFilter===id?'active':''}" data-folder="${id}">
+        ${escHtml(mdFolders[id].name)} <span class="folder-cnt">${folderStyleCount(id,true)}</span>
+      </div>`;
+    });
+    wrap.innerHTML = html;
+
+    wrap.querySelectorAll('.md-folder-row').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const id = row.dataset.folder;
+        asMainFilter = id;
+        asChosenFolder = null; // picking a different main folder clears any subfolder selection
+        asChosenStyle = '';
+        renderAsFolderTree();
+        renderAsStyleList();
+        updateAsSaveState();
+      });
+    });
+  }
+
+  // ---- RIGHT side: subfolders of the selected main folder. Clicking a subfolder directly
+  // selects the style filed inside it — no separate style list, no back button.
+  function asSubfolderItemHtml(sid){
+    const isSelected = asChosenFolder === sid;
+    return `<div class="md-folder-row no-children ${isSelected?'active':''}" data-subfolder="${sid}">
+      ${escHtml(mdFolders[sid].name)} <span class="folder-cnt">${folderStyleCount(sid,false)}</span>
+    </div>`;
+  }
+
   function renderAsStyleList(){
     const wrap = $('add-style-stylelist');
     if(!wrap) return;
-    const q = asStyleSearchQuery.trim().toLowerCase();
-    let styles = styleList();
-    if(q) styles = styles.filter(s=>s.toLowerCase().includes(q));
-    if(!styles.length){
-      wrap.innerHTML = `<div class="as-folder-empty">No styles match "${escHtml(asStyleSearchQuery)}".</div>`;
+
+    if(!asMainFilter){
+      wrap.innerHTML = `<div class="as-folder-empty">Pick a folder on the left first.</div>`;
       return;
     }
-    wrap.innerHTML = styles.map(s=>{
-      const n = (masterData[s] || []).length;
-      const folderName = mdStyleFolder[s] && mdFolders[mdStyleFolder[s]] ? mdFolders[mdStyleFolder[s]].name : 'Unfiled';
-      return `<button type="button" class="as-folder-item as-style-item ${asChosenStyle===s ? 'active':''}" data-style="${escAttr(s)}">
-        <span>${escHtml(s)}</span>
-        <span class="as-style-meta">${n} op${n===1?'':'s'} · ${escHtml(folderName)}</span>
-      </button>`;
-    }).join('');
-    wrap.querySelectorAll('.as-style-item').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        asChosenStyle = btn.dataset.style;
-        const nameInput = $('add-style-name-input');
-        if(nameInput) nameInput.value = asChosenStyle;
+
+    const subs = mdSubFolderIds(asMainFilter);
+    if(!subs.length){
+      wrap.innerHTML = `<div class="as-folder-empty">No subfolders in this folder.</div>`;
+      return;
+    }
+    wrap.innerHTML = subs.map(sid=>asSubfolderItemHtml(sid)).join('');
+    wrap.querySelectorAll('.md-folder-row').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const sid = row.dataset.subfolder;
+        asChosenFolder = sid;
+        // Each subfolder is expected to hold the one style filed inside it —
+        // picking the subfolder picks that style directly.
+        const stylesHere = styleList().filter(s=>mdStyleFolder[s]===sid).sort();
+        asChosenStyle = stylesHere[0] || '';
         renderAsStyleList();
         updateAsSaveState();
       });
@@ -3370,8 +3416,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     closeAddStyleModal();
     $('add-op-manual-form').style.display = 'none';
     const hasAnchor = typeof insertAt === 'number';
-    asStyleSearchQuery = '';
     asChosenStyle = '';
+    asChosenFolder = null;
+    asMainFilter = null;
 
     const backdrop = document.createElement('div');
     backdrop.id = 'add-style-modal';
@@ -3385,14 +3432,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
           </div>
           <button class="modal-close" id="add-style-modal-close" title="Close">&times;</button>
         </div>
-        <div class="as-section-label">1. Pick a style to copy</div>
-        <div class="as-folder-search"><input type="text" id="add-style-style-search" placeholder="Search styles..."></div>
-        <div class="as-folder-list" id="add-style-stylelist" style="max-height:320px;"></div>
-
-        <div class="as-name-field">
-          <label>2. Section name on this sheet</label>
-          <input type="text" id="add-style-name-input" placeholder="Pick a style above first...">
+        <div class="as-folder-browser as-folder-browser-full">
+          <div class="as-folder-col">
+            <label>Folders</label>
+            <div class="md-folder-tree" id="add-style-folder-tree"></div>
+          </div>
+          <div class="as-folder-col">
+            <label>Styles</label>
+            <div class="as-folder-list as-folder-list-full" id="add-style-stylelist"></div>
+          </div>
         </div>
+
         <div class="modal-foot">
           <button class="btn btn-ghost btn-sm" id="add-style-cancel">Cancel</button>
           <button class="btn btn-primary btn-sm" id="add-style-save" disabled>Add to Sheet</button>
@@ -3401,13 +3451,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     `;
     document.body.appendChild(backdrop);
 
+    renderAsFolderTree();
     renderAsStyleList();
     updateAsSaveState();
-
-    $('add-style-style-search').addEventListener('input', (e)=>{
-      asStyleSearchQuery = e.target.value;
-      renderAsStyleList();
-    });
 
     $('add-style-save').addEventListener('click', ()=>{
       if(!asChosenStyle){ toast('Pick a style to copy from first'); return; }
@@ -3416,10 +3462,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       const sourceRows = masterData[asChosenStyle] || [];
       if(!sourceRows.length){ toast('That style has no operations yet — pick a different style'); return; }
 
-      const typedName = ($('add-style-name-input').value || '').trim().toUpperCase();
-      // The name only labels this section on THIS sheet — it is never written back
-      // into Master Data, so it never needs to be unique against masterData keys.
-      const group = typedName || asChosenStyle;
+      // The section on this sheet is simply named after the style copied — it is
+      // never written back into Master Data, so it never needs to be unique
+      // against masterData keys.
+      const group = asChosenStyle;
       const rows = sourceRows.map(o=>({op:o.op, mc:o.mc, smv:o.smv}));
 
       pushUndo();
@@ -4158,7 +4204,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       ['STYLE NO', style, 'ORDER QTY', $('f-orderqty').value, 'ORDER EFF %', ordereffNum],
       ['DESCRIPTION', $('f-description').value, 'MADE BY', $('f-madeby').value, 'LEAD TIME (DAYS)', leadtimeNum],
       ['','','','','',''],
-      ['SL','SECTION','OPERATION NAME','MACHINE TYPE','SMV','TARGET/HR'],
+      ['SL','','OPERATION NAME','MACHINE TYPE','SMV','TARGET/HR'],
     ];
     const dataStartRow = aoa.length; // 0-indexed row where operation rows begin
     let sl = 0;
@@ -4167,7 +4213,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       sec.rows.forEach(r=>{
         sl++;
         const hasSmv = !!r.smv;
-        aoa.push([sl, sec.group, r.op, r.mc || '—', hasSmv ? r.smv : '', hasSmv ? Math.round(60/r.smv) : '']);
+        // SECTION column is left blank on download — this is the same column that
+        // holds BUYER / STYLE NO / DESCRIPTION values a few rows up, so it stays
+        // visible and normal-width; only the section-name text itself is left out.
+        aoa.push([sl, '', r.op, r.mc || '—', hasSmv ? r.smv : '', hasSmv ? Math.round(60/r.smv) : '']);
         if(!hasSmv) noSmvRowIdx.push(aoa.length - 1);
       });
     });
