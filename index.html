@@ -4313,8 +4313,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Cost Sheet');
-    const filename = (style || 'cost-sheet').replace(/[^a-z0-9]+/gi,'_') + '_operation_bulletin.xlsx';
-    XLSX.writeFile(wb, filename);
+    const fnDescription = $('f-description').value || '';
+    const filename = [style, fnDescription].filter(Boolean).join('_').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'') || 'cost-sheet';
+    XLSX.writeFile(wb, filename + '.xlsx');
     toast('Excel file downloaded');
   });
 
@@ -4339,7 +4340,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       return;
     }
     const style = $('f-style').value || '';
-    const filename = (style || 'cost-sheet').replace(/[^a-z0-9]+/gi,'_') + '_operation_bulletin.pdf';
+    const fnDescription = $('f-description').value || '';
+    const filenameBase = [style, fnDescription].filter(Boolean).join('_').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'') || 'cost-sheet';
+    const filename = filenameBase + '.pdf';
     const target = document.getElementById('panel-costsheet');
 
     // clear any open row selection / colour popover / inline add-row form so
