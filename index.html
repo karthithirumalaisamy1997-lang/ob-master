@@ -1231,6 +1231,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   // ---------- state ----------
+  // FIX (data disappearing the day after an OB/Master Data upload):
+  // loadPersisted()/loadUserSheet() used to treat "a real read failure
+  // (network hiccup, offline for a second, etc.)" exactly the same as
+  // "nothing has ever been saved" — both just silently fell back to blank
+  // state. That's fine by itself, BUT the very next autosave (schedulePersist
+  // -> persistAll) then WROTE that blank state over the real, already-saved
+  // copy in the cloud — permanently wiping out yesterday's upload. These two
+  // flags remember when a load could not be confirmed, so persistAll() can
+  // refuse to overwrite that specific data until a successful reload happens.
+  let masterBundleLoadFailed = false;
+  let builderSheetLoadFailed = false;
   let masterData = JSON.parse(JSON.stringify(SEED_MASTER_DATA)); // {style: [{op,mc,smv}]}
   let masterImages = {}; // {style: dataUrl} - reference image shown beside each style's operations in Master Data
   let mdFolders = {}; // {folderId: {name, parentId}} - parentId null = main folder, or another folderId = subfolder (one level deep)
@@ -1247,6 +1258,12 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let mdSelectedStyle = null; // filter pill in master tab
   let mdSelectedRow = null; // {style, idx} - row clicked in master data table, insertion anchor
   let mdEditingRow = null; // {style, idx} - row currently in inline edit mode
+  // Set only via the right-click "Insert operation above/below" menu on a Master Data
+  // operation row (see openMdOpCtxMenu/handleMdOpCtxAction below). When set, it takes
+  // priority over mdSelectedRow so the new operation lands at this EXACT position
+  // instead of always being inserted after whatever row happens to be selected.
+  let mdExplicitInsertAt = null; // {style, atIdx}
+  let mdOpClipboard = null; // {data:{op,mc,smv}, mode:'copy'|'cut'} - Master Data operation row copied/cut via right-click
   let pillsExpanded = false;
   let openedSavedId = null; // id of the saved OB currently loaded in the builder, or null for a fresh/new one
   let pendingRevisionOf = null; // id of the original saved OB this builder session is a revision of (e.g. "As Per Sample"), or null
@@ -1482,32 +1499,47 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // (their unsaved buyer/style/operations, even the "Unsaved changes"
     // prompt firing for data that wasn't theirs). It's now loaded per-user,
     // right after login, by loadUserSheet() — see completeLogin().
-    const [bundleRes, usRes] = await Promise.all([
-      window.storage.get('ob_master_bundle').catch(()=>null),
-      window.storage.get('ob_users').catch(()=>null)
+    const [bundleRead, usRead] = await Promise.all([
+      getWithRetry('ob_master_bundle'),
+      getWithRetry('ob_users')
     ]);
 
     let bundle = null;
-    if(bundleRes && bundleRes.value){ try{ bundle = JSON.parse(bundleRes.value); }catch(e){} }
+    if(bundleRead.found && bundleRead.value){ try{ bundle = JSON.parse(bundleRead.value); }catch(e){} }
 
     if(bundle){
       masterData = bundle.masterData || {};
       masterImages = bundle.masterImages || {};
       mdFolders = bundle.mdFolders || {};
       mdStyleFolder = bundle.mdStyleFolder || {};
+    } else if(!bundleRead.ok){
+      // The read itself failed after retries (offline / connection hiccup) —
+      // this is NOT the same as "nothing saved yet". Keep masterData blank
+      // for now but block persistAll() from writing it back out, otherwise
+      // the next autosave would overwrite the real Master Data in the cloud
+      // with this blank state — which is exactly what was making an OB
+      // upload look like it "disappeared the next day".
+      masterBundleLoadFailed = true;
     } else {
       // Nothing under the new combined key yet — fall back to the old
       // separate keys from before this change.
-      const [mdRes, miRes, mfRes, msfRes] = await Promise.all([
-        window.storage.get('ob_master_data').catch(()=>null),
-        window.storage.get('ob_master_images').catch(()=>null),
-        window.storage.get('ob_master_folders').catch(()=>null),
-        window.storage.get('ob_md_style_folder').catch(()=>null)
+      const [mdRead, miRead, mfRead, msfRead] = await Promise.all([
+        getWithRetry('ob_master_data'),
+        getWithRetry('ob_master_images'),
+        getWithRetry('ob_master_folders'),
+        getWithRetry('ob_md_style_folder')
       ]);
-      if(mdRes && mdRes.value){ try{ masterData = JSON.parse(mdRes.value); }catch(e){} }
-      if(miRes && miRes.value){ try{ masterImages = JSON.parse(miRes.value); }catch(e){} }
-      if(mfRes && mfRes.value){ try{ mdFolders = JSON.parse(mfRes.value) || {}; }catch(e){} }
-      if(msfRes && msfRes.value){ try{ mdStyleFolder = JSON.parse(msfRes.value) || {}; }catch(e){} }
+      if(!mdRead.ok || !miRead.ok || !mfRead.ok || !msfRead.ok){
+        // Same protection as above, applied to the legacy fallback keys.
+        masterBundleLoadFailed = true;
+      }
+      if(mdRead.found && mdRead.value){ try{ masterData = JSON.parse(mdRead.value); }catch(e){} }
+      if(miRead.found && miRead.value){ try{ masterImages = JSON.parse(miRead.value); }catch(e){} }
+      if(mfRead.found && mfRead.value){ try{ mdFolders = JSON.parse(mfRead.value) || {}; }catch(e){} }
+      if(msfRead.found && msfRead.value){ try{ mdStyleFolder = JSON.parse(msfRead.value) || {}; }catch(e){} }
+    }
+    if(masterBundleLoadFailed){
+      toast('Could not load Master Data (connection issue) — reload the page before uploading or editing, or you may lose data');
     }
 
     // Defensive cleanup: drop any corrupted operation entries (missing a
@@ -1531,9 +1563,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       const f = mdFolders[id];
       if(f && f.parentId && !mdFolders[f.parentId]) f.parentId = null; // orphaned subfolder becomes a main folder
     });
-    if(usRes && usRes.value){
+    if(usRead.found && usRead.value){
       try{
-        const loadedUsers = JSON.parse(usRes.value);
+        const loadedUsers = JSON.parse(usRead.value);
         if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
       }catch(e){}
     }
@@ -1562,10 +1594,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // silently keeping whatever was left in memory from a previous session.
   async function loadUserSheet(){
     let applied = false;
-    try{
-      const srRes = await window.storage.get(currentSheetKey());
-      if(srRes && srRes.value){
-        const parsed = JSON.parse(srRes.value);
+    builderSheetLoadFailed = false; // reset on every login — re-checked fresh each time
+    const sheetRead = await getWithRetry(currentSheetKey());
+    if(sheetRead.found && sheetRead.value){
+      try{
+        const parsed = JSON.parse(sheetRead.value);
         sheetSections = parsed.sections || [];
         sketchDataUrl = parsed.sketch || null;
         $('f-buyer').value = (parsed.header && parsed.header.buyer) || '';
@@ -1577,8 +1610,15 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         $('f-madeby').value = (parsed.header && parsed.header.madeby) || '';
         $('f-ordereff').value = (parsed.header && parsed.header.ordereff) || '';
         applied = true;
-      }
-    }catch(e){ /* nothing saved yet for this user — fall through to blank */ }
+      }catch(e){ /* corrupted value — fall through to blank */ }
+    } else if(!sheetRead.ok){
+      // Could not confirm whether a draft exists (network/read error) — this
+      // is NOT the same as "nothing saved". Block saving over it until a
+      // reload succeeds, so the real saved sheet in the cloud never gets
+      // silently overwritten with blank data by the next autosave.
+      builderSheetLoadFailed = true;
+      toast('Could not load your saved sheet (connection issue) — reload the page before making changes, or you may lose data');
+    }
     if(!applied){
       sheetSections = [];
       sketchDataUrl = null;
@@ -1623,6 +1663,30 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     throw lastErr;
   }
 
+  // Retries a single storage READ a couple of times with a short backoff
+  // before giving up — same idea as setWithRetry above, but for reads.
+  // Crucially, this tells the caller WHICH of two very different things
+  // happened, instead of collapsing both into "no value":
+  //   - found:false, ok:true   -> genuinely nothing saved yet (normal, e.g. first run)
+  //   - ok:false                -> the read itself kept failing (network/outage) —
+  //                                the real data might still be sitting in the
+  //                                cloud; the caller must NOT treat this as blank.
+  async function getWithRetry(key, attempts){
+    attempts = attempts || 3;
+    let lastErr;
+    for(let i = 0; i < attempts; i++){
+      try{
+        const res = await window.storage.get(key);
+        return { ok:true, found:true, value: res.value };
+      }catch(e){
+        if(e && e.message === 'not found') return { ok:true, found:false, value:null };
+        lastErr = e;
+        if(i < attempts - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+      }
+    }
+    return { ok:false, found:false, value:null, error:lastErr };
+  }
+
   async function persistAll(){
     // Master Data (styles, reference images, folders, style→folder mapping)
     // is saved together as ONE combined key instead of four separate ones.
@@ -1651,11 +1715,21 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // Each write reports its own success/failure (after retrying) instead of a
     // bare .catch(()=>{}) so a save that's still failing after retries surfaces
     // to the user rather than looking like data "disappeared" on reload.
-    const labeled = [
-      ['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))],
-      ['Users', setWithRetry('ob_users', JSON.stringify(appUsers))],
-      ['Current sheet', setWithRetry(currentSheetKey(), JSON.stringify(sheetPayload))]
-    ];
+    //
+    // Master data / Current sheet are skipped here (not just left to fail)
+    // when their initial load never actually succeeded — see
+    // masterBundleLoadFailed / builderSheetLoadFailed above. Writing them out
+    // in that state would overwrite the real saved copy in the cloud with
+    // blank/incomplete local data, which is what used to make an OB upload
+    // look like it "disappeared the next day".
+    const labeled = [];
+    if(!masterBundleLoadFailed){
+      labeled.push(['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))]);
+    }
+    labeled.push(['Users', setWithRetry('ob_users', JSON.stringify(appUsers))]);
+    if(!builderSheetLoadFailed){
+      labeled.push(['Current sheet', setWithRetry(currentSheetKey(), JSON.stringify(sheetPayload))]);
+    }
     const results = await Promise.allSettled(labeled.map(l => l[1]));
     const failed = results
       .map((r, i) => (r.status === 'rejected' ? labeled[i][0] : null))
@@ -1663,7 +1737,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(failed.length){
       toast('Save failed (' + failed.join(', ') + ') — check your connection and try again');
     }
-    return failed.length === 0;
+    if(masterBundleLoadFailed || builderSheetLoadFailed){
+      toast('Some data is NOT being saved right now (Master Data or your sheet couldn\'t be loaded) — reload the page to fix this');
+    }
+    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed;
   }
 
   // ---------- Master Data screen: explicit "Save" button ----------
@@ -4546,6 +4623,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         renderMdRows();
         renderSelBanner();
       });
+      // Right-click an operation row inside a style to Insert above/below, Move
+      // to another style, Copy/Cut/Paste, or Delete — same menu style as the
+      // one already used for rows in the New Style / Operations cost sheet.
+      tr.addEventListener('contextmenu', (e)=>{
+        if(tr.classList.contains('editing')) return;
+        e.preventDefault();
+        openMdOpCtxMenu(e.clientX, e.clientY, tr.dataset.style, +tr.dataset.idx);
+      });
     });
     wrap.querySelectorAll('.row-edit').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
@@ -4647,6 +4732,182 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       toast('Image added');
     }).catch(()=>{ mdImageUploadTarget = null; toast('Could not read that image'); });
   });
+
+  // ---------- right-click context menu on an individual Master Data operation row ----------
+  // Mirrors the same menu style used on rows in the New Style / Operations cost
+  // sheet builder (Insert above/below, Copy/Cut/Paste, Delete) plus a "Move to
+  // another style…" action, since a Master Data row lives inside a style
+  // instead of a section.
+  function closeMdOpCtxMenu(){
+    const m = document.getElementById('md-op-ctx-menu');
+    if(m) m.remove();
+  }
+
+  function openMdOpCtxMenu(x, y, style, idx){
+    closeMdOpCtxMenu();
+    const canManage = !currentUser || currentUser.admin || currentUser.permDelete;
+    const canCreate = !currentUser || currentUser.admin || currentUser.permCreate;
+    const menu = document.createElement('div');
+    menu.id = 'md-op-ctx-menu';
+    menu.className = 'ctx-menu';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.innerHTML = `
+      <button class="ctx-item" data-act="insert-above" ${canCreate ? '' : 'disabled'}>Insert operation above</button>
+      <button class="ctx-item" data-act="insert-below" ${canCreate ? '' : 'disabled'}>Insert operation below</button>
+      <button class="ctx-item" data-act="move" ${canManage ? '' : 'disabled'}>Move to another style…</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-act="copy">Copy</button>
+      <button class="ctx-item" data-act="cut" ${canManage ? '' : 'disabled'}>Cut</button>
+      <button class="ctx-item" data-act="paste" ${(canCreate && mdOpClipboard) ? '' : 'disabled'}>Paste ${mdOpClipboard ? 'below' : ''}</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item ctx-danger" data-act="delete" ${canManage ? '' : 'disabled'}>Delete</button>
+    `;
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    if(rect.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+    if(rect.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+
+    menu.querySelectorAll('.ctx-item').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(btn.disabled) return;
+        handleMdOpCtxAction(btn.dataset.act, style, idx);
+        closeMdOpCtxMenu();
+      });
+    });
+  }
+
+  document.addEventListener('click', closeMdOpCtxMenu);
+  document.addEventListener('contextmenu', (e)=>{
+    if(!e.target.closest('tr.md-rows-row')) closeMdOpCtxMenu();
+  });
+  document.addEventListener('scroll', closeMdOpCtxMenu, true);
+  window.addEventListener('resize', closeMdOpCtxMenu);
+
+  function handleMdOpCtxAction(act, style, idx){
+    const list = masterData[style];
+    if(!list) return;
+
+    if(act === 'insert-above' || act === 'insert-below'){
+      mdOpenAddFormForInsert(style, act === 'insert-above' ? idx : idx + 1);
+      return;
+    }
+
+    if(act === 'move'){
+      openMdOpMoveModal(style, idx);
+      return;
+    }
+
+    if(act === 'copy' || act === 'cut'){
+      const row = list[idx];
+      if(!row) return;
+      mdOpClipboard = { data: JSON.parse(JSON.stringify(row)), mode: act };
+      if(act === 'cut'){
+        pushUndo();
+        list.splice(idx, 1);
+        if(mdSelectedRow && mdSelectedRow.style===style && mdSelectedRow.idx===idx) mdSelectedRow = null;
+        renderStylePills();
+        renderMdRows();
+        renderSelBanner();
+        schedulePersist();
+      }
+      toast(act === 'copy' ? 'Operation copied' : 'Operation cut — right-click a row and choose Paste');
+      return;
+    }
+
+    if(act === 'paste'){
+      if(!mdOpClipboard) return;
+      pushUndo();
+      list.splice(idx + 1, 0, JSON.parse(JSON.stringify(mdOpClipboard.data)));
+      renderStylePills();
+      renderMdRows();
+      renderSelBanner();
+      schedulePersist();
+      toast('Operation pasted');
+      return;
+    }
+
+    if(act === 'delete'){
+      pushUndo();
+      list.splice(idx, 1);
+      if(mdSelectedRow && mdSelectedRow.style===style && mdSelectedRow.idx===idx) mdSelectedRow = null;
+      renderStylePills();
+      renderMdRows();
+      renderSelBanner();
+      schedulePersist();
+      toast('Operation removed');
+    }
+  }
+
+  // Opens the existing "Add Operation" form pre-locked to one style, inserting
+  // the new operation at an EXACT index (via mdExplicitInsertAt) instead of
+  // always after whatever row is currently selected. Used by "Insert operation
+  // above/below" on the right-click menu above.
+  function mdOpenAddFormForInsert(style, atIdx){
+    mdExplicitInsertAt = { style: style, atIdx: atIdx };
+    $('create-op-form').style.display = 'none';
+    const form = $('add-op-form');
+    form.style.display = 'grid';
+    const sel = $('new-op-style');
+    sel.innerHTML = styleList().map(s=>`<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('') + `<option value="__new__">+ New style...</option>`;
+    sel.value = style;
+    sel.disabled = true;
+    $('new-op-name').focus();
+    form.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  // ---------- Move operation modal: "Move to another style…" on a Master Data operation row ----------
+  function closeMdOpMoveModal(){
+    const m = document.getElementById('md-op-move-backdrop');
+    if(m) m.remove();
+  }
+  function openMdOpMoveModal(style, idx){
+    closeMdOpMoveModal();
+    const op = masterData[style] && masterData[style][idx];
+    if(!op) return;
+    const targets = styleList().filter(s => s !== style);
+    const list = targets.length
+      ? targets.map(s => `<button class="folder-pick-item" data-style="${escAttr(s)}">${escHtml(s)}</button>`).join('')
+      : `<div class="modal-empty">No other styles to move to yet.</div>`;
+    const overlay = document.createElement('div');
+    overlay.id = 'md-op-move-backdrop';
+    overlay.className = 'modal-backdrop';
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:420px;">
+        <div class="modal-head">
+          <div><h3 style="font-size:16px;">Move "${escHtml(op.op)}" to…</h3></div>
+          <button class="modal-close" id="md-op-move-close" title="Close">&times;</button>
+        </div>
+        <div class="folder-pick-list">${list}</div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="md-op-move-cancel">Cancel</button></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) closeMdOpMoveModal(); });
+    $('md-op-move-close').addEventListener('click', closeMdOpMoveModal);
+    $('md-op-move-cancel').addEventListener('click', closeMdOpMoveModal);
+    overlay.querySelectorAll('.folder-pick-item[data-style]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const targetStyle = btn.dataset.style;
+        pushUndo();
+        const currentList = masterData[style];
+        if(!currentList || !currentList[idx]){ closeMdOpMoveModal(); return; }
+        const [moved] = currentList.splice(idx, 1);
+        masterData[targetStyle] = masterData[targetStyle] || [];
+        masterData[targetStyle].push(moved);
+        if(mdSelectedRow && mdSelectedRow.style===style && mdSelectedRow.idx===idx) mdSelectedRow = null;
+        renderFolderTree();
+        renderStylePills();
+        renderMdRows();
+        renderSelBanner();
+        schedulePersist();
+        toast('Moved "' + moved.op + '" to "' + targetStyle + '"');
+        closeMdOpMoveModal();
+      });
+    });
+  }
 
   // ---------- right-click context menu on a Master Data style group (pill or header) ----------
   function closeMdGroupCtxMenu(){
@@ -5067,6 +5328,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   $('md-search-input').addEventListener('input', renderMdRows);
 
   $('md-add-toggle').addEventListener('click', ()=>{
+    mdExplicitInsertAt = null; // opening the button normally always uses the "after selected row" behaviour, not a right-click insert
     $('create-op-form').style.display = 'none';
     const form = $('add-op-form');
     form.style.display = form.style.display === 'none' ? 'grid' : 'none';
@@ -5092,12 +5354,19 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     masterData[style] = masterData[style] || [];
     const newOp = {op:name, mc:machine, smv:smv};
 
-    if(mdSelectedRow && mdSelectedRow.style === style && masterData[style][mdSelectedRow.idx]){
+    if(mdExplicitInsertAt && mdExplicitInsertAt.style === style){
+      // Came from the right-click "Insert operation above/below" menu — land
+      // at that exact index instead of the "after selected row" behaviour below.
+      const atIdx = Math.max(0, Math.min(mdExplicitInsertAt.atIdx, masterData[style].length));
+      masterData[style].splice(atIdx, 0, newOp);
+      mdSelectedRow = {style: style, idx: atIdx};
+    } else if(mdSelectedRow && mdSelectedRow.style === style && masterData[style][mdSelectedRow.idx]){
       masterData[style].splice(mdSelectedRow.idx + 1, 0, newOp);
       mdSelectedRow = {style: style, idx: mdSelectedRow.idx + 1}; // keep selection on the new row
     } else {
       masterData[style].push(newOp);
     }
+    mdExplicitInsertAt = null;
 
     $('new-op-name').value=''; $('new-op-machine').value=''; $('new-op-smv').value='';
     renderFolderTree();
