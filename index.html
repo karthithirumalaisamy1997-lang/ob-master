@@ -958,13 +958,14 @@ body.pdf-mode .md-hint{display:none !important;}
             <div class="field"><label>Style No</label><input id="ly-style" type="text" disabled></div>
             <div class="field"><label>Description</label><input id="ly-description" type="text" disabled></div>
             <div class="field"><label>Working Hours</label><input id="ly-hours" type="number" min="0" step="0.5"></div>
-            <div class="field"><label>Target Efficiency %</label><input id="ly-eff" type="number" min="0" max="100" step="1" placeholder="e.g. 75"></div>
+            <div class="field"><label>Target Efficiency %</label><input id="ly-eff" type="number" min="0" max="100" step="1" placeholder="e.g. 75" disabled></div>
+            <div class="field"><label>Plan Target</label><input id="ly-plantarget" type="number" min="0" step="1" placeholder="e.g. 1000"></div>
           </div>
           <div class="ly-sketch-box no-print" id="ly-sketch-box" title="Garment reference image">
             <div class="ly-sketch-ph" id="ly-sketch-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>No image on the OB</span></div>
           </div>
         </div>
-        <div class="layout-hint">SMV and Machine are copied from the Operation Bulletin and can't be edited here. Enter Manpower per operation and set Working Hours / Target Efficiency % above — the rest recalculates automatically.</div>
+        <div class="layout-hint">SMV and Machine are copied from the Operation Bulletin and can't be edited here. Enter Manpower per operation and set Working Hours / Plan Target above — Target Efficiency % is fixed (Planned Output ÷ Day Output @ 100%) and the rest recalculates automatically.</div>
 
         <div class="layout-summary-grid" id="layout-summary"></div>
         <div id="layout-groups-wrap"></div>
@@ -1070,6 +1071,7 @@ body.pdf-mode .md-hint{display:none !important;}
         <div class="user-form-btn-row">
           <button class="btn btn-primary" id="user-create-btn">+ Create User</button>
           <button class="btn btn-ghost" id="user-edit-cancel" style="display:none;">Cancel Edit</button>
+          <button class="btn btn-primary btn-sm" id="user-save-btn" style="background:var(--amber);border-color:var(--amber);margin-left:auto;" title="Save the Users list right now">💾 Save</button>
         </div>
       </div>
 
@@ -1242,6 +1244,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // refuse to overwrite that specific data until a successful reload happens.
   let masterBundleLoadFailed = false;
   let builderSheetLoadFailed = false;
+  let usersLoadFailed = false; // true only when the Users read itself failed (network hiccup) —
+  // NOT when there's simply no users saved yet. Without this distinction, a failed
+  // read would silently fall back to the blank/default user list in memory, and the
+  // very next autosave would then overwrite the real Users list in the cloud with
+  // that short default — permanently deleting every user that was ever created.
   let masterData = JSON.parse(JSON.stringify(SEED_MASTER_DATA)); // {style: [{op,mc,smv}]}
   let masterImages = {}; // {style: dataUrl} - reference image shown beside each style's operations in Master Data
   let mdFolders = {}; // {folderId: {name, parentId}} - parentId null = main folder, or another folderId = subfolder (one level deep)
@@ -1568,6 +1575,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         const loadedUsers = JSON.parse(usRead.value);
         if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
       }catch(e){}
+    } else if(!usRead.ok){
+      // The read itself failed after retries (offline / connection hiccup) — this is
+      // NOT the same as "no users saved yet". Block persistAll() from writing Users
+      // back out in this state, otherwise the next autosave would overwrite the real,
+      // already-saved user list in the cloud with whatever is in memory right now
+      // (the plain default account) — which is exactly what was deleting every
+      // created user the moment anything else triggered a save.
+      usersLoadFailed = true;
+    }
+    if(usersLoadFailed){
+      toast('Could not load Users (connection issue) — reload the page before creating or deleting users, or you may lose data');
     }
     // Safety net only: if there is truly no user account at all (e.g. very
     // first run, or persisted data was lost), create one default admin so
@@ -1575,7 +1593,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // named "karthi" that was renamed or had its password changed later —
     // we leave it exactly as saved instead of overwriting it back to the
     // original default every time the app loads.
-    if(!appUsers.length){
+    if(!appUsers.length && !usersLoadFailed){
       appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
     }
   }
@@ -1726,7 +1744,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(!masterBundleLoadFailed){
       labeled.push(['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))]);
     }
-    labeled.push(['Users', setWithRetry('ob_users', JSON.stringify(appUsers))]);
+    if(!usersLoadFailed){
+      labeled.push(['Users', setWithRetry('ob_users', JSON.stringify(appUsers))]);
+    }
     if(!builderSheetLoadFailed){
       labeled.push(['Current sheet', setWithRetry(currentSheetKey(), JSON.stringify(sheetPayload))]);
     }
@@ -1737,10 +1757,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(failed.length){
       toast('Save failed (' + failed.join(', ') + ') — check your connection and try again');
     }
-    if(masterBundleLoadFailed || builderSheetLoadFailed){
-      toast('Some data is NOT being saved right now (Master Data or your sheet couldn\'t be loaded) — reload the page to fix this');
+    if(masterBundleLoadFailed || builderSheetLoadFailed || usersLoadFailed){
+      const broken = [];
+      if(masterBundleLoadFailed) broken.push('Master Data');
+      if(usersLoadFailed) broken.push('Users');
+      if(builderSheetLoadFailed) broken.push('your sheet');
+      toast('Some data is NOT being saved right now (' + broken.join(', ') + ' couldn\'t be loaded) — reload the page to fix this');
     }
-    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed;
+    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed && !usersLoadFailed;
   }
 
   // ---------- Master Data screen: explicit "Save" button ----------
@@ -2165,7 +2189,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   // ---------- Layout Builder ----------
-  let currentLayout = null; // {id, sourceObId, buyer, style, description, hours, eff, sections:[{group, rows:[{op,mc,smv,manpower}]}]}
+  let currentLayout = null; // {id, sourceObId, buyer, style, description, hours, eff, planTarget, sections:[{group, rows:[{op,mc,smv,manpower}]}]}
 
   async function openLayoutFromOB(rec){
     const lyId = 'ly_' + rec.id;
@@ -2196,6 +2220,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       description: rec.description || '',
       hours: existing && existing.hours ? existing.hours : 8,
       eff: existing && existing.eff != null ? existing.eff : '',
+      planTarget: existing && existing.planTarget != null ? existing.planTarget : '',
       sketch: rec.sketch || (existing ? existing.sketch : null) || null,
       sections: freshSections
     };
@@ -2211,9 +2236,12 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       totalManpower += (r.manpower || 0);
     }));
     const hours = parseFloat($('ly-hours').value) || 0;
-    const effPct = parseFloat($('ly-eff').value) || 0;
+    const planTarget = parseFloat($('ly-plantarget').value) || 0;
     const dayOutput100 = (totalManpower > 0 && totalSmv > 0 && hours > 0) ? (totalManpower * hours * 60) / totalSmv : 0;
-    const plannedOutput = dayOutput100 * (effPct / 100);
+    // Planned Output is simply the Plan Target you entered — shown as-is, not a separate figure.
+    const plannedOutput = planTarget;
+    // Target Efficiency % is no longer typed in — it's fixed/derived: Planned Output ÷ Day Output @ 100%.
+    const effPct = dayOutput100 > 0 ? (plannedOutput / dayOutput100) * 100 : 0;
     const perHourTarget100 = hours > 0 ? dayOutput100 / hours : 0;
     // Pitch Time: SMV per head across the whole line — the base pace of the line.
     const pitchTime = totalManpower > 0 ? totalSmv / totalManpower : 0;
@@ -2221,7 +2249,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const upperPitch = pitchTime * (effPct / 100);
     // Lower Pitch: mirrors Upper Pitch the same distance below Pitch Time.
     const lowerPitch = pitchTime + (pitchTime - upperPitch);
-    return {totalSmv, totalManpower, hours, effPct, dayOutput100, plannedOutput, perHourTarget100, pitchTime, upperPitch, lowerPitch};
+    return {totalSmv, totalManpower, hours, effPct, planTarget, dayOutput100, plannedOutput, perHourTarget100, pitchTime, upperPitch, lowerPitch};
   }
 
   function renderLayoutEditor(){
@@ -2239,7 +2267,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     $('ly-style').value = currentLayout.style;
     $('ly-description').value = currentLayout.description;
     $('ly-hours').value = currentLayout.hours;
-    $('ly-eff').value = currentLayout.eff;
+    $('ly-plantarget').value = currentLayout.planTarget;
 
     const sketchBox = $('ly-sketch-box');
     sketchBox.innerHTML = currentLayout.sketch
@@ -2247,6 +2275,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       : `<div class="ly-sketch-ph" id="ly-sketch-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>No image on the OB</span></div>`;
 
     const t = layoutTotals();
+    // Target Efficiency % is fixed/derived (Planned Output ÷ Day Output @ 100%) — display it,
+    // and keep currentLayout.eff in sync so it saves/exports/prints correctly.
+    $('ly-eff').value = t.effPct ? +t.effPct.toFixed(1) : '';
+    currentLayout.eff = $('ly-eff').value;
 
     $('layout-summary').innerHTML = `
       <div class="layout-stat-card"><div class="layout-stat-label">Total SMV</div><div class="layout-stat-val">${t.totalSmv.toFixed(2)}</div></div>
@@ -2260,11 +2292,15 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       const secSmv = sec.rows.reduce((s,r)=>s+(r.smv||0),0);
       const rows = sec.rows.map((r, rowIdx)=>{
         const hourlyTarget = r.smv > 0 ? 60 / r.smv : 0;
-        const reqManpower = t.totalSmv > 0 ? (r.smv / t.totalSmv) * t.totalManpower : 0;
+        // Required Manpower = (Plan Target ÷ Working Hours) ÷ Hourly Target — same formula as
+        // the reference layout sheet: G = ($PlanTarget/$Hours) / E.
+        const reqManpower = (t.planTarget > 0 && t.hours > 0 && hourlyTarget > 0) ? (t.planTarget / t.hours) / hourlyTarget : 0;
         const outputFlow = (r.manpower || 0) * hourlyTarget;
-        const balEff = t.perHourTarget100 > 0 ? (outputFlow / t.perHourTarget100) * 100 : 0;
+        // Bal. Eff % = Plan Target ÷ (Manpower × Working Hours × Hourly Target) — same formula
+        // as the reference layout sheet: I = $PlanTarget / ((Manpower × $Hours) × E).
+        const balEff = (t.planTarget > 0 && r.manpower > 0 && t.hours > 0 && hourlyTarget > 0) ? (t.planTarget / (r.manpower * t.hours * hourlyTarget)) * 100 : 0;
         let badgeClass = 'flat', badgeText = '—';
-        if(r.manpower > 0 && t.perHourTarget100 > 0){
+        if(t.planTarget > 0 && r.manpower > 0 && t.hours > 0 && hourlyTarget > 0){
           badgeText = balEff.toFixed(0) + '%';
           badgeClass = (balEff >= 90 && balEff <= 110) ? 'good' : (balEff >= 70 && balEff <= 130) ? 'warn' : 'bad';
         }
@@ -2416,7 +2452,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   $('ly-hours').addEventListener('change', ()=>{ if(currentLayout){ currentLayout.hours = parseFloat($('ly-hours').value) || 0; renderLayoutEditor(); } });
-  $('ly-eff').addEventListener('change', ()=>{ if(currentLayout){ currentLayout.eff = $('ly-eff').value; renderLayoutEditor(); } });
+  // Target Efficiency % is fixed/derived now (Planned Output ÷ Day Output @ 100%) — no longer
+  // a manual input, so there's nothing to listen for here.
+  $('ly-plantarget').addEventListener('change', ()=>{ if(currentLayout){ currentLayout.planTarget = $('ly-plantarget').value; renderLayoutEditor(); } });
 
   $('ly-sketch-box').addEventListener('click', ()=>{
     if(currentLayout && currentLayout.sketch) openLightbox(currentLayout.sketch);
@@ -2428,6 +2466,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(!currentLayout){ toast('Nothing to save'); return; }
     currentLayout.hours = parseFloat($('ly-hours').value) || 0;
     currentLayout.eff = $('ly-eff').value;
+    currentLayout.planTarget = $('ly-plantarget').value;
     const payload = Object.assign({}, currentLayout, {
       savedAt: new Date().toISOString(),
       savedBy: currentUser ? currentUser.username : ''
@@ -2443,23 +2482,32 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   $('layout-export-excel-btn').addEventListener('click', ()=>{
     if(!currentLayout){ toast('Open a layout first'); return; }
+    if(typeof XLSX === 'undefined'){
+      toast('Excel library did not load — check your internet connection and try again');
+      return;
+    }
     const t = layoutTotals();
     const aoa = [];
-    aoa.push(['LAYOUT — ' + (currentLayout.style || ''), '', '', '', '', '', '', '']);
-    aoa.push(['Buyer', currentLayout.buyer || '', 'Description', currentLayout.description || '', 'Working Hours', t.hours, 'Target Eff %', t.effPct]);
+    aoa.push(['LAYOUT — ' + (currentLayout.style || ''), '', '', '', '', '', '', '', '']);
+    aoa.push(['Buyer', currentLayout.buyer || '', 'Description', currentLayout.description || '', 'Working Hours', t.hours, 'Target Eff %', t.effPct ? +t.effPct.toFixed(1) : '']);
     aoa.push(['Total SMV', +t.totalSmv.toFixed(2), 'Plan Cadre', +t.totalManpower.toFixed(1), 'Day Output @100%', +t.dayOutput100.toFixed(0), 'Planned Output', +t.plannedOutput.toFixed(0)]);
     aoa.push(['Pitch Time', +t.pitchTime.toFixed(2), 'UCL', +Math.max(t.upperPitch,t.lowerPitch).toFixed(2), 'LCL', +Math.min(t.upperPitch,t.lowerPitch).toFixed(2), '', '']);
     aoa.push([]);
     aoa.push(['SL','Operation','Machine','SMV','Hourly Target','Manpower','Req.','Output/Hr','Bal. Eff %']);
+    const dataStartRow = aoa.length; // 0-indexed row where group/operation rows begin
+    const groupRowIdx = [];   // 0-indexed rows that are a group-name banner (e.g. "ASSEMBLY")
+    const headingOpRowIdx = []; // 0-indexed rows that are a heading operation (no Machine/SMV)
     let sl = 1;
     currentLayout.sections.forEach(sec=>{
+      groupRowIdx.push(aoa.length);
       aoa.push([sec.group,'','','','','','','','']);
       sec.rows.forEach(r=>{
         const isHeadingOp = !r.mc && !r.smv;
         const hourlyTarget = r.smv > 0 ? 60 / r.smv : 0;
-        const reqManpower = t.totalSmv > 0 ? (r.smv / t.totalSmv) * t.totalManpower : 0;
+        const reqManpower = (t.planTarget > 0 && t.hours > 0 && hourlyTarget > 0) ? (t.planTarget / t.hours) / hourlyTarget : 0;
         const outputFlow = (r.manpower || 0) * hourlyTarget;
-        const balEff = t.perHourTarget100 > 0 ? (outputFlow / t.perHourTarget100) * 100 : 0;
+        const balEff = (t.planTarget > 0 && r.manpower > 0 && t.hours > 0 && hourlyTarget > 0) ? (t.planTarget / (r.manpower * t.hours * hourlyTarget)) * 100 : 0;
+        if(isHeadingOp) headingOpRowIdx.push(aoa.length);
         aoa.push([
           isHeadingOp ? '' : sl++,
           r.op,
@@ -2473,12 +2521,92 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         ]);
       });
     });
+    const dataEndRow = aoa.length - 1; // 0-indexed, last operation/group row
     aoa.push([]);
     aoa.push(['Note: the garment reference image is included in the PDF export, not in this Excel file.']);
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:6},{wch:34},{wch:14},{wch:9},{wch:13},{wch:11},{wch:9},{wch:11},{wch:11}];
-    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:8} }];
+    const lastCol = 8; // 0-indexed, column I
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];
+
+    // ---- title row: merged, navy fill, white bold, centered — same styling as the OB export ----
+    for(let c=0;c<=lastCol;c++){
+      const ref = XLSX.utils.encode_cell({r:0,c});
+      styleCell(ws, ref, { bold:true, sz:15, color:XLC.white, fill:XLC.navy, h:'center' });
+    }
+
+    // ---- info grid rows (1,2,3): label/value pairs alternating navy & teal labels ----
+    [1,2,3].forEach(r=>{
+      [0,2,4,6].forEach(labelCol=>{
+        const labelRef = XLSX.utils.encode_cell({r,c:labelCol});
+        const valueRef = XLSX.utils.encode_cell({r,c:labelCol+1});
+        const labelFill = (labelCol === 2 || labelCol === 6) ? XLC.teal : XLC.navy;
+        styleCell(ws, labelRef, { bold:true, sz:10.5, color:XLC.white, fill:labelFill, h:'left' });
+        styleCell(ws, valueRef, { sz:11, color:XLC.ink, fill:XLC.white, h:'left' });
+      });
+    });
+    // blank spacer row 4 — no border/fill needed, leave as-is
+    for(let c=0;c<=lastCol;c++){
+      ws[XLSX.utils.encode_cell({r:4,c})] = { t:'s', v:'' };
+    }
+
+    // ---- table header row: teal fill, white bold, centered ----
+    for(let c=0;c<=lastCol;c++){
+      const ref = XLSX.utils.encode_cell({r:5,c});
+      styleCell(ws, ref, { bold:true, sz:11, color:XLC.white, fill:XLC.teal, h:'center' });
+    }
+
+    // ---- group / operation rows ----
+    for(let r=dataStartRow; r<=dataEndRow; r++){
+      const isGroup = groupRowIdx.includes(r);
+      const isHeadingRow = headingOpRowIdx.includes(r);
+      if(isGroup) ws['!merges'].push({ s:{r,c:0}, e:{r,c:lastCol} });
+      for(let c=0;c<=lastCol;c++){
+        const ref = XLSX.utils.encode_cell({r,c});
+        const align = (c===1) ? 'left' : 'center';
+        if(isGroup){
+          styleCell(ws, ref, { bold:true, sz:11, color:XLC.white, fill:XLC.navy, h:'left' });
+        } else {
+          styleCell(ws, ref, {
+            bold: isHeadingRow,
+            sz: 10.5,
+            color: XLC.ink,
+            fill: isHeadingRow ? XLC.yellow : XLC.white,
+            h: align
+          });
+        }
+      }
+    }
+
+    // ---- number formats for the real numeric cells ----
+    const numFmt = (r,c,fmt)=>{ const ref = XLSX.utils.encode_cell({r,c}); if(ws[ref]) ws[ref].z = fmt; };
+    numFmt(1,5,'0.0');            // Working Hours
+    numFmt(1,7,'0.0"%"');         // Target Eff %
+    numFmt(2,1,'0.00');           // Total SMV
+    numFmt(2,3,'0.0');            // Plan Cadre
+    numFmt(2,5,'0');              // Day Output @100%
+    numFmt(2,7,'0');              // Planned Output
+    numFmt(3,1,'0.00');           // Pitch Time
+    numFmt(3,3,'0.00');           // UCL
+    numFmt(3,5,'0.00');           // LCL
+    for(let r=dataStartRow; r<=dataEndRow; r++){
+      if(groupRowIdx.includes(r)) continue;
+      numFmt(r,3,'0.00'); // SMV
+      numFmt(r,4,'0.0');  // Hourly Target
+      numFmt(r,5,'0.0');  // Manpower
+      numFmt(r,6,'0.00'); // Req.
+      numFmt(r,7,'0.0');  // Output/Hr
+      numFmt(r,8,'0.0"%"'); // Bal. Eff %
+    }
+
+    // ---- auto-fit every column to its longest actual value ----
+    const colMin = [6,34,10,8,13,11,9,11,11], colMax = [8,44,16,10,15,13,11,13,13];
+    ws['!cols'] = Array.from({length:lastCol+1},(_,c)=>{
+      const longest = aoa.reduce((m,row)=> Math.max(m, String(row[c] ?? '').length), 0);
+      return { wch: Math.min(Math.max(longest+2, colMin[c]), colMax[c]) };
+    });
+    ws['!rows'] = aoa.map((_,i)=> i===0 ? {hpx:24} : {hpx:19});
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Layout');
     const filename = (currentLayout.style || 'layout').replace(/[^a-z0-9]+/gi,'_') + '_layout.xlsx';
@@ -5849,6 +5977,23 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     renderUsers();
     schedulePersist();
     toast('User "' + username + '" created');
+  });
+
+  // Manage Users screen already autosaves a moment after you create/edit/delete
+  // a user (schedulePersist -> persistAll, same as everywhere else in the app).
+  // This button exists for a clear, on-demand confirmation right on this screen:
+  // click it any time after creating a user, and it saves right now (no debounce
+  // wait) and tells you plainly whether it actually went through.
+  $('user-save-btn').addEventListener('click', async ()=>{
+    clearTimeout(saveTimer);
+    const btn = $('user-save-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    const ok = await persistAll();
+    btn.disabled = false;
+    btn.textContent = original;
+    if(ok) toast('✓ Users saved');
   });
 
   // ---------- Login gate ----------
