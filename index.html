@@ -130,7 +130,7 @@ nav.side-nav{padding:0 10px;display:flex;flex-direction:column;gap:2px;}
 .buyer-group-head .chev{width:15px;height:15px;transition:transform .18s ease;flex-shrink:0;}
 .buyer-group.open .buyer-group-head .chev{transform:rotate(90deg);}
 .buyer-group-body{max-height:0;overflow:hidden;transition:max-height .22s ease;}
-.buyer-group.open .buyer-group-body{max-height:2000px;}
+.buyer-group.open .buyer-group-body{max-height:none;}
 .buyer-group-body-inner{padding:14px 16px 16px;border-top:1px solid var(--line);}
 .style-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 4px;border-bottom:1px solid var(--paper-2);}
 .style-row:last-child{border-bottom:none;}
@@ -1146,6 +1146,16 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // keys do, but this keeps things safe if that ever changes.
   function fbSafeKey(key){ return String(key).replace(/[.#$\[\]/]/g, '_'); }
 
+  // Reads only the records whose key starts with `prefix` (Firebase key-range query).
+  async function fbReadPrefix(prefix){
+    const safePrefix = fbSafeKey(prefix || '');
+    const ref = fbDb.ref('ob_storage');
+    const snap = safePrefix
+      ? await ref.orderByKey().startAt(safePrefix).endAt(safePrefix + '\uf8ff').once('value')
+      : await ref.once('value');
+    return snap.val() || {};
+  }
+
   // window.storage only exists inside Claude.ai's artifact preview. When this
   // app is published as a normal website (own domain, GitHub Pages, etc.) that
   // API is missing entirely, so every save call was throwing and showing
@@ -1169,25 +1179,15 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         return { key, deleted: true, shared: !!shared };
       },
       async list(prefix, shared){
-        const snap = await fbDb.ref('ob_storage').once('value');
-        const all = snap.val() || {};
-        const safePrefix = fbSafeKey(prefix || '');
-        const keys = Object.keys(all).filter(k => k.indexOf(safePrefix) === 0);
-        return { keys, prefix, shared: !!shared };
+        const all = await fbReadPrefix(prefix);
+        return { keys: Object.keys(all), prefix, shared: !!shared };
       },
-      // Fetches every key+value under a prefix in ONE network round trip.
-      // Screens that used to do list() then get() for every single key
-      // (one saved Operation Bulletin = one full round trip each) now load
-      // everything in one shot — this is what made the Saved OB and Layout
-      // tabs slow to open when there were many records.
+      // Fetches every key+value under a prefix in ONE network round trip, and
+      // only the keys under that prefix (not the whole database) — so opening
+      // Buyer wise OB no longer downloads Master Data images, users, layouts etc.
       async listWithValues(prefix, shared){
-        const snap = await fbDb.ref('ob_storage').once('value');
-        const all = snap.val() || {};
-        const safePrefix = fbSafeKey(prefix || '');
-        const keys = Object.keys(all).filter(k => k.indexOf(safePrefix) === 0);
-        const values = {};
-        keys.forEach(k => { values[k] = all[k]; });
-        return { keys, values, prefix, shared: !!shared };
+        const all = await fbReadPrefix(prefix);
+        return { keys: Object.keys(all), values: all, prefix, shared: !!shared };
       }
     };
   } else if(!window.storage){
@@ -2165,7 +2165,16 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     toast('Closed — nothing extra was saved');
   });
 
-  async function fetchSavedList(){
+  // ---- Saved OB list cache ----
+  // The list is kept in memory after the first load, so opening Buyer wise OB
+  // (or Styles / History / Dashboard) is instant. A quiet background refresh
+  // then pulls in anything other people saved, and re-draws only if it changed.
+  let savedCache = null;
+  let savedRefreshing = false;
+  let savedLastRefresh = 0;
+  const savedSig = (list) => (list || []).map(it => (it.id||'') + '@' + (it.savedAt||'')).join('|');
+
+  async function fetchSavedFresh(){
     const items = [];
     try{
       if(typeof window.storage.listWithValues === 'function'){
@@ -2185,8 +2194,64 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       }
     }catch(e){ /* no saved records yet */ }
     items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    savedCache = items;
+    savedLastRefresh = Date.now();
     return items;
   }
+
+  function rerenderActiveSavedView(){
+    const act = document.querySelector('.side-nav-btn.active');
+    const tab = act && act.dataset.tab;
+    if(tab === 'saved') renderSavedList();
+    else if(tab === 'styles') renderStylesList();
+    else if(tab === 'history') renderHistoryList();
+    else if(tab === 'dashboard') renderDashboard();
+  }
+
+  function refreshSavedInBackground(){
+    if(savedRefreshing || Date.now() - savedLastRefresh < 15000) return;
+    savedRefreshing = true;
+    const before = savedSig(savedCache);
+    fetchSavedFresh().then(fresh=>{
+      if(savedSig(fresh) !== before) rerenderActiveSavedView();
+    }).catch(()=>{}).finally(()=>{ savedRefreshing = false; });
+  }
+
+  async function fetchSavedList(){
+    if(savedCache){
+      refreshSavedInBackground();
+      return savedCache;
+    }
+    return await fetchSavedFresh();
+  }
+
+  // Keep the cache correct when THIS browser saves or deletes an OB.
+  (function hookSavedCache(){
+    const st = window.storage;
+    if(!st || st.__obCacheHooked) return;
+    const origSet = st.set.bind(st), origDel = st.delete.bind(st);
+    st.set = async function(key, value, shared){
+      const r = await origSet(key, value, shared);
+      if(savedCache && typeof key === 'string' && key.indexOf('ob_saved:') === 0){
+        try{
+          const rec = JSON.parse(value);
+          const i = savedCache.findIndex(it => it.id === rec.id);
+          if(i >= 0) savedCache[i] = rec; else savedCache.push(rec);
+          savedCache.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+        }catch(e){ savedCache = null; }
+      }
+      return r;
+    };
+    st.delete = async function(key, shared){
+      const r = await origDel(key, shared);
+      if(savedCache && typeof key === 'string' && key.indexOf('ob_saved:') === 0){
+        const id = key.slice('ob_saved:'.length);
+        savedCache = savedCache.filter(it => it.id !== id);
+      }
+      return r;
+    };
+    st.__obCacheHooked = true;
+  })();
 
   // ---------- Layout Builder ----------
   let currentLayout = null; // {id, sourceObId, buyer, style, description, hours, eff, planTarget, sections:[{group, rows:[{op,mc,smv,manpower}]}]}
@@ -3121,7 +3186,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   async function renderSavedList(){
     const wrap = $('saved-list-wrap');
-    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const openBuyers = new Set([...wrap.querySelectorAll('.buyer-group.open')].map(e => e.dataset.buyer));
+    if(!savedCache) wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
     const all = await fetchSavedList();
     const q = ($('saved-search').value || '').trim().toLowerCase();
 
@@ -3154,7 +3220,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
     wrap.innerHTML = visibleBuyers.map(buyer=>{
       const styleItems = groups[buyer];
-      const openState = q && groupMatches(buyer) ? ' open' : '';
+      const openState = (q && groupMatches(buyer)) || openBuyers.has(buyer) ? ' open' : '';
       const rows = styleItems.map(it=>{
         const isHl = q && matches(it) ? ' hl' : '';
         return renderRootRow(it, childrenOf(it.id), isHl, matches, q);
@@ -3540,7 +3606,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let asMainFilter = null;     // main folder currently selected on the LEFT — drives which subfolders
                                 // show on the RIGHT
 
-  // ---- LEFT side: main folders only, flat — no expand-in-place, no subfolder rows here ----
+  // ---- LEFT side: main folders. Clicking one opens it in place and its subfolders show
+  // right underneath it. Clicking a subfolder loads that subfolder's styles on the RIGHT.
   function renderAsFolderTree(){
     const wrap = $('add-style-folder-tree');
     if(!wrap) return;
@@ -3550,17 +3617,43 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       html = `<div class="md-folder-empty-hint">No folders yet.</div>`;
     }
     mains.forEach(id=>{
-      html += `<div class="md-folder-row no-children ${asMainFilter===id?'active':''}" data-folder="${id}">
+      const open = asMainFilter === id;
+      const mainActive = open && !asChosenFolder;
+      html += `<div class="md-folder-row no-children ${mainActive?'active':''}" data-folder="${id}">
         ${escHtml(mdFolders[id].name)} <span class="folder-cnt">${folderStyleCount(id,true)}</span>
       </div>`;
+      if(open){
+        const subs = mdSubFolderIds(id);
+        if(!subs.length){
+          html += `<div class="md-folder-empty-hint" style="margin-left:22px;">No subfolders.</div>`;
+        }
+        subs.forEach(sid=>{
+          html += `<div class="md-folder-row sub no-children ${asChosenFolder===sid?'active':''}" data-subfolder="${sid}">
+            ${escHtml(mdFolders[sid].name)} <span class="folder-cnt">${folderStyleCount(sid,false)}</span>
+          </div>`;
+        });
+      }
     });
     wrap.innerHTML = html;
 
-    wrap.querySelectorAll('.md-folder-row').forEach(row=>{
+    wrap.querySelectorAll('.md-folder-row[data-folder]').forEach(row=>{
       row.addEventListener('click', ()=>{
         const id = row.dataset.folder;
-        asMainFilter = id;
-        asChosenFolder = null; // picking a different main folder clears any subfolder selection
+        if(asMainFilter === id && !asChosenFolder){
+          asMainFilter = null;          // click again on an open folder = collapse it
+        } else {
+          asMainFilter = id;
+        }
+        asChosenFolder = null;
+        asChosenStyle = '';
+        renderAsFolderTree();
+        renderAsStyleList();
+        updateAsSaveState();
+      });
+    });
+    wrap.querySelectorAll('.md-folder-row[data-subfolder]').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        asChosenFolder = row.dataset.subfolder;
         asChosenStyle = '';
         renderAsFolderTree();
         renderAsStyleList();
@@ -3569,15 +3662,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     });
   }
 
-  // ---- RIGHT side: subfolders of the selected main folder. Clicking a subfolder directly
-  // selects the style filed inside it — no separate style list, no back button.
-  function asSubfolderItemHtml(sid){
-    const isSelected = asChosenFolder === sid;
-    return `<div class="md-folder-row no-children ${isSelected?'active':''}" data-subfolder="${sid}">
-      ${escHtml(mdFolders[sid].name)} <span class="folder-cnt">${folderStyleCount(sid,false)}</span>
-    </div>`;
-  }
-
+  // ---- RIGHT side: every style filed inside the selected subfolder ----
   function renderAsStyleList(){
     const wrap = $('add-style-stylelist');
     if(!wrap) return;
@@ -3586,22 +3671,32 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       wrap.innerHTML = `<div class="as-folder-empty">Pick a folder on the left first.</div>`;
       return;
     }
-
-    const subs = mdSubFolderIds(asMainFilter);
-    if(!subs.length){
-      wrap.innerHTML = `<div class="as-folder-empty">No subfolders in this folder.</div>`;
+    if(!asChosenFolder){
+      // Styles filed directly in the main folder (if any); otherwise ask for a subfolder
+      const direct = styleList().filter(st=>mdStyleFolder[st]===asMainFilter).sort();
+      if(!direct.length){
+        wrap.innerHTML = `<div class="as-folder-empty">Pick a subfolder to see its styles.</div>`;
+        return;
+      }
+      renderAsStyleRows(wrap, direct);
       return;
     }
-    wrap.innerHTML = subs.map(sid=>asSubfolderItemHtml(sid)).join('');
+    const stylesHere = styleList().filter(st=>mdStyleFolder[st]===asChosenFolder).sort();
+    if(!stylesHere.length){
+      wrap.innerHTML = `<div class="as-folder-empty">No styles in this subfolder.</div>`;
+      return;
+    }
+    renderAsStyleRows(wrap, stylesHere);
+  }
+
+  function renderAsStyleRows(wrap, list){
+    wrap.innerHTML = list.map((st,i)=>`<div class="md-folder-row no-children ${asChosenStyle===st?'active':''}" data-style-idx="${i}">
+      ${escHtml(st)} <span class="folder-cnt">${(masterData[st]||[]).length}</span>
+    </div>`).join('');
     wrap.querySelectorAll('.md-folder-row').forEach(row=>{
       row.addEventListener('click', ()=>{
-        const sid = row.dataset.subfolder;
-        asChosenFolder = sid;
-        // Each subfolder is expected to hold the one style filed inside it —
-        // picking the subfolder picks that style directly.
-        const stylesHere = styleList().filter(s=>mdStyleFolder[s]===sid).sort();
-        asChosenStyle = stylesHere[0] || '';
-        renderAsStyleList();
+        asChosenStyle = list[+row.dataset.styleIdx];
+        renderAsStyleRows(wrap, list);
         updateAsSaveState();
       });
     });
@@ -6005,25 +6100,41 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // browser (localStorage — survives refresh/close) for a limited time,
   // so a refresh resumes the session instead of forcing a fresh login.
   const SESSION_KEY = 'ob_session_v1';
-  const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+  // No time limit anymore: once signed in, a refresh (or closing and reopening
+  // the tab/browser) keeps you signed in. Only the Logout button signs you out.
+  // The session is mirrored in localStorage, sessionStorage and window.name so
+  // it survives a refresh even if one of them is blocked or cleared.
+  const SESSION_WN_PREFIX = '__ob_session__:';
 
-  function saveSession(username){
-    try{
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ username, ts: Date.now() }));
-    }catch(e){ /* localStorage unavailable — session just won't survive a refresh */ }
+  function saveSession(user){
+    // Keep a copy of the user record (without the password) so a refresh can
+    // resume even if the Users list can't be fetched for a moment.
+    const { password, ...safeUser } = user || {};
+    const payload = JSON.stringify({ username: safeUser.username, user: safeUser, ts: Date.now() });
+    try{ localStorage.setItem(SESSION_KEY, payload); }catch(e){}
+    try{ sessionStorage.setItem(SESSION_KEY, payload); }catch(e){}
+    try{ window.name = SESSION_WN_PREFIX + payload; }catch(e){}
   }
   function clearSession(){
     try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+    try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){}
+    try{ if(String(window.name).indexOf(SESSION_WN_PREFIX) === 0) window.name = ''; }catch(e){}
   }
   function readSession(){
-    try{
-      const raw = localStorage.getItem(SESSION_KEY);
-      if(!raw) return null;
-      const s = JSON.parse(raw);
-      if(!s || !s.username || !s.ts) return null;
-      if(Date.now() - s.ts > SESSION_TTL_MS){ clearSession(); return null; }
-      return s;
-    }catch(e){ return null; }
+    const sources = [
+      ()=> localStorage.getItem(SESSION_KEY),
+      ()=> sessionStorage.getItem(SESSION_KEY),
+      ()=> (String(window.name).indexOf(SESSION_WN_PREFIX) === 0 ? String(window.name).slice(SESSION_WN_PREFIX.length) : null)
+    ];
+    for(const get of sources){
+      try{
+        const raw = get();
+        if(!raw) continue;
+        const s = JSON.parse(raw);
+        if(s && s.username) return s;
+      }catch(e){}
+    }
+    return null;
   }
 
   function refreshLoginMode(){
@@ -6046,9 +6157,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const s = readSession();
     if(!s) return false;
     const match = appUsers.find(u => u.username && u.username.toLowerCase() === s.username.toLowerCase());
-    if(!match) return false;
-    completeLogin(match, { skipSessionSave:true });
-    return true;
+    if(match){
+      completeLogin(match, { skipSessionSave:true });
+      return true;
+    }
+    // Users list couldn't be loaded (connection hiccup) — don't kick the person
+    // out to the login screen; resume with the saved copy of their account.
+    if(usersLoadFailed && s.user){
+      completeLogin(s.user, { skipSessionSave:true });
+      return true;
+    }
+    return false;
   }
 
   function applyUserAccess(){
@@ -6072,7 +6191,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   async function completeLogin(user, opts){
     currentUser = user;
-    if(!(opts && opts.skipSessionSave)) saveSession(user.username);
+    if(!(opts && opts.skipSessionSave)) saveSession(user);
     $('login-overlay').style.display = 'none';
     applyUserAccess();
     const h = new Date().getHours();
