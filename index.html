@@ -1508,7 +1508,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // prompt firing for data that wasn't theirs). It's now loaded per-user,
     // right after login, by loadUserSheet() — see completeLogin().
     const [bundleRead, usRead] = await Promise.all([
-      getWithRetry('ob_master_bundle'),
+      getWithRetry('ob_master_bundle', 2, 15000),
       getWithRetry('ob_users')
     ]);
 
@@ -1532,10 +1532,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       // Nothing under the new combined key yet — fall back to the old
       // separate keys from before this change.
       const [mdRead, miRead, mfRead, msfRead] = await Promise.all([
-        getWithRetry('ob_master_data'),
-        getWithRetry('ob_master_images'),
-        getWithRetry('ob_master_folders'),
-        getWithRetry('ob_md_style_folder')
+        getWithRetry('ob_master_data', 3, 15000),
+        getWithRetry('ob_master_images', 3, 60000),
+        getWithRetry('ob_master_folders', 3, 15000),
+        getWithRetry('ob_md_style_folder', 3, 15000)
       ]);
       if(!mdRead.ok || !miRead.ok || !mfRead.ok || !msfRead.ok){
         // Same protection as above, applied to the legacy fallback keys.
@@ -1547,7 +1547,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(msfRead.found && msfRead.value){ try{ mdStyleFolder = JSON.parse(msfRead.value) || {}; }catch(e){} }
     }
     // Reference images load in the background — the app is usable straight away and they appear a moment later.
-    getWithRetry('ob_master_images_v3').then(imgRead=>{
+    getWithRetry('ob_master_images_v3', 3, 60000).then(imgRead=>{
       if(imgRead.found && imgRead.value){
         try{ masterImages = JSON.parse(imgRead.value) || {}; imagesMigrated = true; lastSavedImagesSig = JSON.stringify(masterImages); }catch(e){ imagesLoadFailed = true; }
       } else if(!imgRead.ok){
@@ -1606,6 +1606,34 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // Each signed-in user gets their own in-progress "New Style" draft, keyed
   // by username, instead of everyone sharing one slot. Falls back to a
   // 'guest' bucket only in the (unexpected) case nobody is signed in yet.
+  // The New Style draft is only a personal work-in-progress copy (Save OB is separate and always works), so if it
+  // can't be read right away we retry quietly every few seconds instead of warning the user.
+  function retryUserSheetLoad(n){
+    if(n >= 15 || !currentUser) return;
+    const keyAtStart = currentSheetKey();
+    setTimeout(async ()=>{
+      if(!builderSheetLoadFailed || keyAtStart !== currentSheetKey()) return;
+      const r = await getWithRetry(keyAtStart, 1, 60000);
+      if(keyAtStart !== currentSheetKey()) return;
+      if(!r.ok){ retryUserSheetLoad(n + 1); return; }
+      const fieldIds = ['f-buyer','f-style','f-description','f-planline','f-orderqty','f-leadtime','f-madeby','f-ordereff'];
+      const untouched = !sheetSections.length && !sketchDataUrl && !fieldIds.some(id => $(id).value);
+      if(r.found && r.value && untouched){
+        try{
+          const parsed = JSON.parse(r.value);
+          sheetSections = parsed.sections || [];
+          sketchDataUrl = parsed.sketch || null;
+          const h = parsed.header || {};
+          $('f-buyer').value = h.buyer || ''; $('f-style').value = h.style || ''; $('f-description').value = h.description || '';
+          $('f-planline').value = h.planline || ''; $('f-orderqty').value = h.orderqty || ''; $('f-leadtime').value = h.leadtime || '';
+          $('f-madeby').value = h.madeby || ''; $('f-ordereff').value = h.ordereff || '';
+          renderSketch(); renderSections();
+        }catch(e){}
+      }
+      builderSheetLoadFailed = false;
+    }, 8000);
+  }
+
   function currentSheetKey(){
     return 'ob_current_sheet_v2:' + (currentUser ? currentUser.username.toLowerCase() : 'guest');
   }
@@ -1618,7 +1646,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   async function loadUserSheet(){
     let applied = false;
     builderSheetLoadFailed = false; // reset on every login — re-checked fresh each time
-    const sheetRead = await getWithRetry(currentSheetKey());
+    const sheetRead = await getWithRetry(currentSheetKey(), 3, 60000); // can hold a big sketch image — give it time
     if(sheetRead.found && sheetRead.value){
       try{
         const parsed = JSON.parse(sheetRead.value);
@@ -1640,7 +1668,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       // reload succeeds, so the real saved sheet in the cloud never gets
       // silently overwritten with blank data by the next autosave.
       builderSheetLoadFailed = true;
-      toast('Could not load your saved sheet (connection issue) — reload the page before making changes, or you may lose data');
+      retryUserSheetLoad(0); // keep trying quietly in the background — no warning popup for a draft
     }
     if(!applied){
       sheetSections = [];
@@ -1684,7 +1712,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     let lastErr;
     for(let i = 0; i < attempts; i++){
       try{
-        await withTimeout(window.storage.set(key, value), 30000, 'timeout saving ' + key);
+        await withTimeout(window.storage.set(key, value), 60000, 'timeout saving ' + key);
         return true;
       }catch(e){
         lastErr = e;
@@ -1702,12 +1730,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   //   - ok:false                -> the read itself kept failing (network/outage) —
   //                                the real data might still be sitting in the
   //                                cloud; the caller must NOT treat this as blank.
-  async function getWithRetry(key, attempts){
+  async function getWithRetry(key, attempts, timeoutMs){
     attempts = attempts || 3;
+    timeoutMs = timeoutMs || 5000; // small records (users) answer fast; big ones (sketch images) pass a longer limit
     let lastErr;
     for(let i = 0; i < attempts; i++){
       try{
-        const res = await withTimeout(window.storage.get(key), 5000, 'timeout reading ' + key);
+        const res = await withTimeout(window.storage.get(key), timeoutMs, 'timeout reading ' + key);
         return { ok:true, found:true, value: res.value };
       }catch(e){
         if(e && e.message === 'not found') return { ok:true, found:false, value:null };
@@ -1795,14 +1824,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(failed.length){
       toast('Save failed (' + failed.join(', ') + ') — check your connection and try again');
     }
-    if(masterBundleLoadFailed || builderSheetLoadFailed || usersLoadFailed){
+    if(masterBundleLoadFailed || usersLoadFailed){
       const broken = [];
       if(masterBundleLoadFailed) broken.push('Master Data');
       if(usersLoadFailed) broken.push('Users');
-      if(builderSheetLoadFailed) broken.push('your sheet');
       toast('Some data is NOT being saved right now (' + broken.join(', ') + ' couldn\'t be loaded) — reload the page to fix this');
     }
-    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed && !usersLoadFailed;
+    return failed.length === 0 && !masterBundleLoadFailed && !usersLoadFailed;
   }
 
   // ---------- Master Data screen: explicit "Save" button ----------
