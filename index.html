@@ -1243,6 +1243,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // flags remember when a load could not be confirmed, so persistAll() can
   // refuse to overwrite that specific data until a successful reload happens.
   let masterBundleLoadFailed = false;
+  // Images saved under their own key so an SMV edit is a small write (the combined record got too big and failed).
+  let imagesLoadFailed = false, imagesMigrated = false, lastSavedImagesSig = null, imagesLoaded = false;
+  let appLoaded = false; // true once Master Data + Users have been read — logging in before this would look like a first-time setup
   let builderSheetLoadFailed = false;
   let usersLoadFailed = false; // true only when the Users read itself failed (network hiccup) —
   // NOT when there's simply no users saved yet. Without this distinction, a failed
@@ -1256,9 +1259,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let mdFolderFilter = null; // folderId currently filtering the style pills below, or null = All Styles
   let mdFoldersOpen = {}; // {folderId: true} - which main folders are expanded in the tree
   let mdFolderIdSeq = 1;
-  let appUsers = [
-    {username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true}
-  ]; // [{username, password, admin, menus:[...], permSmv, permDelete, permCreate, permDownload, permUpload}]
+  let appUsers = []; // [{username, passwordHash, salt, admin, menus:[...], permSmv, permDelete, permCreate, permDownload, permUpload}] — no default account is stored in the code any more
   let mdImageUploadTarget = null; // style currently being uploaded an image for
   let sheetSections = []; // [{group, rows:[{op,mc,smv}]}]
   let sketchDataUrl = null;
@@ -1545,6 +1546,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(mfRead.found && mfRead.value){ try{ mdFolders = JSON.parse(mfRead.value) || {}; }catch(e){} }
       if(msfRead.found && msfRead.value){ try{ mdStyleFolder = JSON.parse(msfRead.value) || {}; }catch(e){} }
     }
+    // Reference images load in the background — the app is usable straight away and they appear a moment later.
+    getWithRetry('ob_master_images_v3').then(imgRead=>{
+      if(imgRead.found && imgRead.value){
+        try{ masterImages = JSON.parse(imgRead.value) || {}; imagesMigrated = true; lastSavedImagesSig = JSON.stringify(masterImages); }catch(e){ imagesLoadFailed = true; }
+      } else if(!imgRead.ok){
+        imagesLoadFailed = true;
+      }
+      imagesLoaded = true;
+      const mp = document.getElementById('panel-master');
+      if(mp && mp.classList.contains('active')) renderMasterTab();
+    });
     if(masterBundleLoadFailed){
       toast('Could not load Master Data (connection issue) — reload the page before uploading or editing, or you may lose data');
     }
@@ -1587,15 +1599,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(usersLoadFailed){
       toast('Could not load Users (connection issue) — reload the page before creating or deleting users, or you may lose data');
     }
-    // Safety net only: if there is truly no user account at all (e.g. very
-    // first run, or persisted data was lost), create one default admin so
-    // nobody gets locked out. If any account already exists — including one
-    // named "karthi" that was renamed or had its password changed later —
-    // we leave it exactly as saved instead of overwriting it back to the
-    // original default every time the app loads.
-    if(!appUsers.length && !usersLoadFailed){
-      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
-    }
+    // No default account is created here any more. If there are no users at all (very first run),
+    // the login screen asks for a new admin username + password instead.
   }
 
   // Each signed-in user gets their own in-progress "New Style" draft, keyed
@@ -1666,12 +1671,20 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // before giving up — most failures here are transient (a brief rate-limit
   // or network hiccup), not a real, permanent problem, so it's worth quietly
   // trying again before bothering the user about it.
+  // If the cloud can't be reached, Firebase just waits forever. This turns that into a clear failure after a few seconds.
+  function withTimeout(promise, ms, msg){
+    return new Promise((resolve, reject)=>{
+      const t = setTimeout(()=> reject(new Error(msg)), ms);
+      promise.then(v=>{ clearTimeout(t); resolve(v); }, e=>{ clearTimeout(t); reject(e); });
+    });
+  }
+
   async function setWithRetry(key, value, attempts){
     attempts = attempts || 3;
     let lastErr;
     for(let i = 0; i < attempts; i++){
       try{
-        await window.storage.set(key, value);
+        await withTimeout(window.storage.set(key, value), 30000, 'timeout saving ' + key);
         return true;
       }catch(e){
         lastErr = e;
@@ -1694,7 +1707,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     let lastErr;
     for(let i = 0; i < attempts; i++){
       try{
-        const res = await window.storage.get(key);
+        const res = await withTimeout(window.storage.get(key), 5000, 'timeout reading ' + key);
         return { ok:true, found:true, value: res.value };
       }catch(e){
         if(e && e.message === 'not found') return { ok:true, found:false, value:null };
@@ -1705,7 +1718,32 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     return { ok:false, found:false, value:null, error:lastErr };
   }
 
+  // Fast path used by the Master Data row ✓ button: saves ONLY Master Data (and images, only if they changed).
+  // Users and the in-progress New Style sheet are left to the normal autosave so this returns quickly.
+  async function persistMasterOnly(){
+    if(masterBundleLoadFailed) return false;
+    try{
+      if(!imagesLoadFailed && imagesLoaded){
+        const sig = JSON.stringify(masterImages);
+        if(sig !== lastSavedImagesSig || !imagesMigrated){
+          await setWithRetry('ob_master_images_v3', sig);
+          lastSavedImagesSig = sig; imagesMigrated = true;
+        }
+      }
+      const bundle = { masterData: masterData, mdFolders: mdFolders, mdStyleFolder: mdStyleFolder };
+      if(!imagesMigrated) bundle.masterImages = masterImages;
+      await setWithRetry('ob_master_bundle', JSON.stringify(bundle));
+      return true;
+    }catch(e){ return false; }
+  }
+
   async function persistAll(){
+    if(!masterBundleLoadFailed && !imagesLoadFailed && imagesLoaded){
+      const sig = JSON.stringify(masterImages);
+      if(sig !== lastSavedImagesSig || !imagesMigrated){
+        try{ await setWithRetry('ob_master_images_v3', sig); lastSavedImagesSig = sig; imagesMigrated = true; }catch(e){}
+      }
+    }
     // Master Data (styles, reference images, folders, style→folder mapping)
     // is saved together as ONE combined key instead of four separate ones.
     // Every save cycle used to fire six separate storage writes at once;
@@ -1717,10 +1755,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // Data pieces into one write cuts that down to three requests per cycle.
     const masterBundle = {
       masterData: masterData,
-      masterImages: masterImages,
       mdFolders: mdFolders,
       mdStyleFolder: mdStyleFolder
     };
+    if(!imagesMigrated) masterBundle.masterImages = masterImages; // keep images safe until saved under their own key
     const sheetPayload = {
       sections: sheetSections,
       sketch: sketchDataUrl,
@@ -2174,8 +2212,61 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let savedLastRefresh = 0;
   const savedSig = (list) => (list || []).map(it => (it.id||'') + '@' + (it.savedAt||'')).join('|');
 
-  async function fetchSavedFresh(){
+  // --- browser-side copy of the list (IndexedDB), so the Dashboard / Buyer wise / Styles screens paint instantly
+  // on the next visit or refresh while the real data refreshes quietly in the background. Cleared on logout.
+  const IDB_NAME = 'ob_cache_v1', IDB_STORE = 'kv', IDB_SAVED_KEY = 'saved_list';
+  function idbOpen(){
+    return new Promise((resolve, reject)=>{
+      try{
+        const r = indexedDB.open(IDB_NAME, 1);
+        r.onupgradeneeded = ()=> r.result.createObjectStore(IDB_STORE);
+        r.onsuccess = ()=> resolve(r.result);
+        r.onerror = ()=> reject(r.error);
+      }catch(e){ reject(e); }
+    });
+  }
+  async function idbGet(key){
+    try{
+      const db = await idbOpen();
+      return await new Promise((resolve)=>{
+        const rq = db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key);
+        rq.onsuccess = ()=> resolve(rq.result === undefined ? null : rq.result);
+        rq.onerror = ()=> resolve(null);
+      });
+    }catch(e){ return null; }
+  }
+  async function idbSet(key, val){
+    try{
+      const db = await idbOpen();
+      await new Promise((resolve)=>{
+        const tx = db.transaction(IDB_STORE,'readwrite');
+        if(val === null) tx.objectStore(IDB_STORE).delete(key); else tx.objectStore(IDB_STORE).put(val, key);
+        tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve;
+      });
+    }catch(e){}
+  }
+  let idbSaveTimer = null;
+  function scheduleSavedIdbWrite(){
+    clearTimeout(idbSaveTimer);
+    idbSaveTimer = setTimeout(()=>{ if(savedCache && currentUser) idbSet(IDB_SAVED_KEY, savedCache); }, 1500);
+  }
+  async function loadSavedCacheFromIdb(){
+    if(savedCache) return;
+    const cached = await idbGet(IDB_SAVED_KEY);
+    if(Array.isArray(cached) && cached.length && !savedCache){ savedCache = cached; savedLastRefresh = 0; }
+  }
+
+  let savedInflight = null;
+  function fetchSavedFresh(){
+    // Several screens can ask at the same moment — share ONE download instead of starting one each.
+    if(savedInflight) return savedInflight;
+    savedInflight = fetchSavedFreshInner().finally(()=>{ savedInflight = null; });
+    return savedInflight;
+  }
+
+  async function fetchSavedFreshInner(){
     const items = [];
+    let ok = true;
     try{
       if(typeof window.storage.listWithValues === 'function'){
         // fast path: one round trip total, regardless of how many are saved
@@ -2192,10 +2283,15 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         const recs = await Promise.all(keys.map(k => window.storage.get(k).catch(()=>null)));
         recs.forEach(rec => { try{ if(rec && rec.value) items.push(JSON.parse(rec.value)); }catch(e){} });
       }
-    }catch(e){ /* no saved records yet */ }
+    }catch(e){ ok = false; }
     items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    if(!ok){
+      // A network hiccup must NOT blank out the list we already have.
+      return savedCache || items;
+    }
     savedCache = items;
     savedLastRefresh = Date.now();
+    scheduleSavedIdbWrite();
     return items;
   }
 
@@ -2209,7 +2305,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   function refreshSavedInBackground(){
-    if(savedRefreshing || Date.now() - savedLastRefresh < 15000) return;
+    if(savedRefreshing || Date.now() - savedLastRefresh < 45000) return;
     savedRefreshing = true;
     const before = savedSig(savedCache);
     fetchSavedFresh().then(fresh=>{
@@ -2238,6 +2334,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
           const i = savedCache.findIndex(it => it.id === rec.id);
           if(i >= 0) savedCache[i] = rec; else savedCache.push(rec);
           savedCache.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+          scheduleSavedIdbWrite();
         }catch(e){ savedCache = null; }
       }
       return r;
@@ -2247,6 +2344,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       if(savedCache && typeof key === 'string' && key.indexOf('ob_saved:') === 0){
         const id = key.slice('ob_saved:'.length);
         savedCache = savedCache.filter(it => it.id !== id);
+        scheduleSavedIdbWrite();
       }
       return r;
     };
@@ -3247,7 +3345,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   async function renderStylesList(){
     const wrap = $('styles-list-wrap');
-    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    if(!savedCache) wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
     const all = await fetchSavedList();
     const q = ($('styles-search').value || '').trim().toLowerCase();
 
@@ -3308,7 +3406,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // ---------- History: every style, grouped by which user saved it ----------
   async function renderHistoryList(){
     const wrap = $('history-list-wrap');
-    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    if(!savedCache) wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
     const all = await fetchSavedList();
     const q = ($('history-search').value || '').trim().toLowerCase();
 
@@ -4884,8 +4982,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         renderMdRows();
         renderStylePills();
         renderSelBanner();
-        schedulePersist();
-        toast('Operation updated');
+        toast('Saving…');
+        persistMasterOnly().then(ok=>{ toast(ok ? '✓ Saved — SMV updated' : 'NOT saved — check connection and try again'); });
+        schedulePersist(); // Users / New Style sheet save quietly in the background
       });
     });
     wrap.querySelectorAll('.row-del').forEach(btn=>{
@@ -6031,7 +6130,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(isAdmin){ $('user-perm-smv').checked = true; $('user-perm-delete').checked = true; $('user-perm-create').checked = true; $('user-perm-download').checked = true; $('user-perm-upload').checked = true; }
   });
 
-  $('user-create-btn').addEventListener('click', ()=>{
+  $('user-create-btn').addEventListener('click', async ()=>{
     const username = $('user-username').value.trim();
     const password = $('user-password').value;
     const isEdit = editingUserIndex !== null;
@@ -6051,7 +6150,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(isEdit){
       const existing = appUsers[editingUserIndex];
       existing.username = username;
-      if(password) existing.password = password;
+      if(password) await setUserPassword(existing, password);
       existing.admin = admin;
       existing.menus = menus;
       existing.permSmv = permSmv;
@@ -6066,7 +6165,9 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       return;
     }
 
-    appUsers.push({username, password, admin, menus, permSmv, permDelete, permCreate, permDownload, permUpload});
+    const created = {username, admin, menus, permSmv, permDelete, permCreate, permDownload, permUpload};
+    await setUserPassword(created, password);
+    appUsers.push(created);
     resetUserForm();
 
     renderUsers();
@@ -6106,10 +6207,37 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // it survives a refresh even if one of them is blocked or cleared.
   const SESSION_WN_PREFIX = '__ob_session__:';
 
+  // ---------- password hashing ----------
+  // Passwords are no longer stored as plain text. Each one is salted and hashed (PBKDF2-SHA256) in the browser;
+  // only the salt + hash are saved. Old plain-text accounts keep working and are upgraded automatically on their next login.
+  function bytesToHex(buf){ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+  async function hashPassword(pw, salt){
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt:new TextEncoder().encode(salt), iterations:150000}, key, 256);
+    return bytesToHex(bits);
+  }
+  async function setUserPassword(u, pw){
+    if(window.crypto && crypto.subtle){
+      const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+      u.salt = salt;
+      u.passwordHash = await hashPassword(pw, salt);
+      delete u.password;
+    } else {
+      u.password = pw; // very old browser without Web Crypto: fall back so nobody is locked out
+    }
+  }
+  async function checkUserPassword(u, pw){
+    if(u.passwordHash && u.salt && window.crypto && crypto.subtle){
+      return (await hashPassword(pw, u.salt)) === u.passwordHash;
+    }
+    return u.password !== undefined && u.password === pw;
+  }
+  let loginFails = 0, loginLockedUntil = 0;
+
   function saveSession(user){
     // Keep a copy of the user record (without the password) so a refresh can
     // resume even if the Users list can't be fetched for a moment.
-    const { password, ...safeUser } = user || {};
+    const { password, passwordHash, salt, ...safeUser } = user || {};
     const payload = JSON.stringify({ username: safeUser.username, user: safeUser, ts: Date.now() });
     try{ localStorage.setItem(SESSION_KEY, payload); }catch(e){}
     try{ sessionStorage.setItem(SESSION_KEY, payload); }catch(e){}
@@ -6141,9 +6269,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const overlay = $('login-overlay');
     overlay.style.display = 'flex';
     $('login-error').style.display = 'none';
+    $('login-btn').disabled = false;
+    if(usersLoadFailed){
+      $('login-error').textContent = 'Cannot reach the server (check your internet), so users could not be loaded. Reload the page to try again.';
+      $('login-error').style.display = 'block';
+    }
     $('login-username').value = '';
     $('login-password').value = '';
-    if(!appUsers.length){
+    if(!appUsers.length && !usersLoadFailed){
       $('login-btn').textContent = 'Create & Continue';
     } else {
       $('login-btn').textContent = 'Sign In';
@@ -6197,6 +6330,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const h = new Date().getHours();
     const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     $('greetText').textContent = greet + ', ' + user.username + '!';
+    await loadSavedCacheFromIdb(); // instant paint from last visit, refreshed in the background
     goToTab('dashboard');
     // Load THIS user's own in-progress New Style draft (not anyone else's)
     // before drawing the builder screen.
@@ -6206,30 +6340,43 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     renderDashboard();
   }
 
-  $('login-btn').addEventListener('click', ()=>{
+  $('login-btn').addEventListener('click', async ()=>{
+    const showErr = (m)=>{ $('login-error').textContent = m; $('login-error').style.display = 'block'; };
     const username = $('login-username').value.trim();
     const password = $('login-password').value;
-    if(!username || !password){
-      $('login-error').textContent = 'Enter both username and password.';
-      $('login-error').style.display = 'block';
+    if(!username || !password){ showErr('Enter both username and password.'); return; }
+    if(!appLoaded){ showErr('Still loading — please wait a moment and try again.'); return; }
+    if(Date.now() < loginLockedUntil){
+      showErr('Too many wrong attempts — wait ' + Math.ceil((loginLockedUntil - Date.now())/1000) + ' seconds and try again.');
       return;
     }
     if(!appUsers.length){
+      if(usersLoadFailed){ showErr('Could not load users (connection issue). Reload the page and try again.'); return; }
+      if(password.length < 8){ showErr('First-time setup: choose a password of at least 8 characters.'); return; }
       // first run: whoever fills this in becomes the initial admin
-      const newUser = {username, password, admin:true, menus:Object.keys(MENU_LABELS), permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true};
+      const newUser = {username, admin:true, menus:Object.keys(MENU_LABELS), permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true};
+      await setUserPassword(newUser, password);
       appUsers.push(newUser);
       schedulePersist();
       completeLogin(newUser);
       toast('Admin account created');
       return;
     }
-    const match = appUsers.find(u => u.username && u.username.toLowerCase() === username.toLowerCase() && u.password === password);
-    if(!match){
-      $('login-error').textContent = 'Incorrect username or password.';
-      $('login-error').style.display = 'block';
+    const cand = appUsers.find(u => u.username && u.username.toLowerCase() === username.toLowerCase());
+    const ok = cand ? await checkUserPassword(cand, password) : false;
+    if(!ok){
+      loginFails++;
+      if(loginFails >= 5){ loginFails = 0; loginLockedUntil = Date.now() + 30000; showErr('Too many wrong attempts — wait 30 seconds and try again.'); }
+      else showErr('Incorrect username or password.');
       return;
     }
-    completeLogin(match);
+    loginFails = 0;
+    if(cand.password !== undefined && !cand.passwordHash && window.crypto && crypto.subtle){
+      // old plain-text account: convert it to a salted hash now
+      await setUserPassword(cand, password);
+      schedulePersist();
+    }
+    completeLogin(cand);
   });
   $('login-username').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') $('login-password').focus(); });
   $('login-password').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') $('login-btn').click(); });
@@ -6249,6 +6396,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   $('logout-btn').addEventListener('click', ()=>{
     currentUser = null;
     clearSession();
+    savedCache = null; savedLastRefresh = 0; idbSet(IDB_SAVED_KEY, null); // don't leave saved data behind in this browser
     refreshLoginMode();
   });
 
@@ -6318,7 +6466,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   // ---------- init ----------
   (async function init(){
-    await loadPersisted();
+    $('login-btn').textContent = 'Connecting…';
+    $('login-btn').disabled = true;
+    try{ await loadPersisted(); }catch(e){ console.error(e); usersLoadFailed = true; }
+    appLoaded = true;
     if(!tryResumeSession()) refreshLoginMode();
   })();
 
