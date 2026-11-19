@@ -2707,6 +2707,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     });
     try{
       await window.storage.set('layout_saved:' + currentLayout.id, JSON.stringify(payload));
+      if(layoutCache){
+        layoutCache = layoutCache.filter(it => it.id !== payload.id);
+        layoutCache.unshift(JSON.parse(JSON.stringify(payload)));
+      }
       toast('Layout saved for ' + currentLayout.style);
       renderLayoutSavedList();
     }catch(e){
@@ -2898,10 +2902,36 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     return items;
   }
 
+  // SPEED: the saved-layouts list is kept in memory + a local cache (IndexedDB),
+  // so the Layout tab opens instantly; the cloud copy refreshes in the background.
+  let layoutCache = null;
+  let layoutRenderSeq = 0;
+  const layoutSig = (list)=> (list || []).map(it => it.id + ':' + (it.savedAt || '')).join('|');
+
+  async function refreshLayoutCache(){
+    const fresh = await fetchLayoutList();
+    layoutCache = fresh;
+    cachePut('layout_list', JSON.stringify(fresh));
+    return fresh;
+  }
+
   async function renderLayoutSavedList(){
+    const seq = ++layoutRenderSeq;
     const wrap = $('layout-saved-list-wrap');
-    wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
-    const all = await fetchLayoutList();
+    if(!layoutCache){
+      const c = await cacheGet('layout_list');
+      if(c && !layoutCache){ try{ layoutCache = JSON.parse(c); }catch(e){} }
+    }
+    const oldSig = layoutCache ? layoutSig(layoutCache) : null;
+    if(layoutCache) drawLayoutSavedList(layoutCache);
+    else wrap.innerHTML = '<div class="saved-empty">Loading...</div>';
+    const fresh = await refreshLayoutCache();
+    if(seq !== layoutRenderSeq) return; // a newer render already took over
+    if(oldSig === null || layoutSig(fresh) !== oldSig) drawLayoutSavedList(fresh);
+  }
+
+  function drawLayoutSavedList(all){
+    const wrap = $('layout-saved-list-wrap');
     const q = ($('layout-saved-search').value || '').trim().toLowerCase();
 
     if(!all.length){
@@ -2984,6 +3014,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         if(!(!currentUser || currentUser.admin || currentUser.permDelete)){ toast('You do not have permission to delete'); return; }
         showConfirmModal('Delete this saved layout?', async ()=>{
           try{ await window.storage.delete('layout_saved:' + b.dataset.id); }catch(e){}
+          if(layoutCache) layoutCache = layoutCache.filter(it => it.id !== b.dataset.id);
           if(currentLayout && currentLayout.id === b.dataset.id){ currentLayout = null; renderLayoutEditor(); }
           toast('Deleted');
           renderLayoutSavedList();
@@ -2991,7 +3022,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       });
     });
   }
-  $('layout-saved-search').addEventListener('input', renderLayoutSavedList);
+  $('layout-saved-search').addEventListener('input', ()=>{ if(layoutCache) drawLayoutSavedList(layoutCache); else renderLayoutSavedList(); });
 
   // ---------- dashboard ----------
   const GARMENT_TYPES = [
@@ -6398,6 +6429,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // Load THIS user's own in-progress New Style draft (not anyone else's)
     // before drawing the builder screen.
     renderDashboard(); // start right away (uses the prefetched list) — don't wait for the draft sheet
+    // SPEED: warm up the saved-layouts list in the background so the Layout tab is instant.
+    if(user.admin || (user.menus || []).includes('layout')){
+      cacheGet('layout_list').then(c=>{ if(c && !layoutCache){ try{ layoutCache = JSON.parse(c); }catch(e){} } });
+      refreshLayoutCache().catch(()=>{});
+    }
     await loadUserSheet();
     renderSketch();
     renderSections();
