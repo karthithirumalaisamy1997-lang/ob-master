@@ -1831,7 +1831,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   async function persistAll(){
-    if(masterBundlePending) await masterReadyPromise; // never save Master Data before the cloud copy is confirmed
+    // never save Master Data before the cloud copy is confirmed — but don't let a stalled read freeze
+    // saving of everything else: after 15 s just skip Master Data for this cycle.
+    if(masterBundlePending) await Promise.race([masterReadyPromise, new Promise(r => setTimeout(r, 15000))]);
+    const skipMaster = masterBundlePending;
     // Master Data (styles, reference images, folders, style→folder mapping)
     // is saved together as ONE combined key instead of four separate ones.
     // Every save cycle used to fire six separate storage writes at once;
@@ -1867,7 +1870,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // blank/incomplete local data, which is what used to make an OB upload
     // look like it "disappeared the next day".
     const labeled = [];
-    if(!masterBundleLoadFailed){
+    if(!masterBundleLoadFailed && !skipMaster){
       const masterJson = JSON.stringify(masterBundle);
       // SPEED: every autosave used to re-upload the whole Master Data (with all reference images,
       // several MB) even when only the OB sheet changed — that big upload blocked "Save OB".
@@ -2233,6 +2236,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   let saveObInFlight = false;
+  let saveObStartedAt = 0;
   $('save-ob-btn').addEventListener('click', async ()=>{
     const buyer = $('f-buyer').value.trim();
     const style = $('f-style').value.trim();
@@ -2240,8 +2244,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const totals = currentTotals();
     // If this builder currently has a saved OB loaded, update that same record
     // instead of creating a new one each time Save OB is clicked.
-    if(saveObInFlight) return; // a save is already running — ignore the extra click so no duplicate OB is created
+    if(saveObInFlight && Date.now() - saveObStartedAt < 20000) return; // a save is already running — ignore the extra click so no duplicate OB is created
     saveObInFlight = true;
+    saveObStartedAt = Date.now();
+    toast('Saving…');
     const prevOpenedId = openedSavedId; // remembered so the toast / a failed save can tell new vs update
     const id = openedSavedId || ('sv' + Date.now());
     deletedSavedIds.delete(id); // if this id was deleted earlier in this session and is being saved again, let it show up
@@ -2270,7 +2276,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     try{
       const wasUpdate = !!prevOpenedId;
       const wasRevision = !!pendingRevisionOf;
-      await window.storage.set('ob_saved:' + id, JSON.stringify(payload));
+      const slowTimer = setTimeout(()=>toast('Slow connection — still saving, please keep this page open'), 8000);
+      try{ await window.storage.set('ob_saved:' + id, JSON.stringify(payload)); } finally { clearTimeout(slowTimer); }
       openedSavedId = id;
       // Note: pendingRevisionOf / pendingRevisionLabel are deliberately NOT
       // cleared here. If this OB is a revision ("As Per Sample"), every
@@ -2281,7 +2288,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       toast(wasUpdate ? 'OB saved — updated ' + style : (wasRevision ? 'OB saved — "As Per Sample" linked to ' + style : 'OB saved — under ' + buyer));
     }catch(e){
       openedSavedId = prevOpenedId; // save failed — don't keep pointing at a record that was never written
-      toast('Could not save — try again');
+      console.error('Save OB failed', e);
+      toast('Could not save — ' + ((e && (e.code || e.message)) || 'try again'));
     }finally{
       saveObInFlight = false;
     }
@@ -2319,6 +2327,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // (or Styles / History / Dashboard) is instant. A quiet background refresh
   // then pulls in anything other people saved, and re-draws only if it changed.
   let savedCache = null;
+  let obWritesInFlight = 0; // OB saves/deletes currently going to the cloud
+  let savedViaLight = false; // this session's list came from the light copies
   let savedRefreshing = false;
   let savedLastRefresh = 0;
   const deletedSavedIds = new Set(); // ids deleted in this session — a late/stale refresh must never re-add them
@@ -2359,12 +2369,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     savedFreshInflight = fetchSavedFreshRaw().finally(()=>{ savedFreshInflight = null; });
     return savedFreshInflight;
   }
-  async function fetchSavedFreshRaw(){
+  const stripSketch = (it)=>{ const c = Object.assign({}, it); delete c.sketch; delete c._partial; return c; };
+
+  // Original full download (every OB incl. sketch images) — now only used once to build the light copies.
+  async function fetchSavedFullItems(){
     const items = [];
-    let fetchOk = true;
+    let ok = true;
     try{
       if(typeof window.storage.listWithValues === 'function'){
-        // fast path: one round trip total, regardless of how many are saved
         const res = await window.storage.listWithValues('ob_saved:');
         const keys = (res && res.keys) || [];
         const values = (res && res.values) || {};
@@ -2372,13 +2384,55 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
           try{ if(values[k]) items.push(JSON.parse(values[k])); }catch(e){ /* skip broken record */ }
         }
       } else {
-        // fallback: fetch every record in parallel instead of one-by-one
         const listRes = await window.storage.list('ob_saved:');
         const keys = (listRes && listRes.keys) || [];
         const recs = await Promise.all(keys.map(k => window.storage.get(k).catch(()=>null)));
         recs.forEach(rec => { try{ if(rec && rec.value) items.push(JSON.parse(rec.value)); }catch(e){} });
       }
-    }catch(e){ fetchOk = false; /* no saved records yet, or the download failed */ }
+    }catch(e){ ok = false; }
+    return {items, ok};
+  }
+
+  let lightMigrating = false;
+  async function migrateLightCopies(items){
+    if(lightMigrating) return;
+    lightMigrating = true;
+    try{
+      const list = items.filter(it => it && it.id);
+      for(let i = 0; i < list.length; i += 10){
+        await Promise.all(list.slice(i, i + 10).map(it => window.storage.set('ob_saved_light:' + it.id, JSON.stringify(stripSketch(it)))));
+      }
+      await window.storage.set('ob_meta:light_ready', '1'); // only after every copy exists
+    }catch(e){ lightMigrating = false; }
+  }
+
+  async function fetchSavedFreshRaw(){
+    let items = null;
+    let fetchOk = true;
+    // SPEED: read the small light copies (no sketch images) instead of every full OB
+    try{
+      if(typeof window.storage.listWithValues === 'function'){
+        const [ready, res] = await Promise.all([
+          window.storage.get('ob_meta:light_ready').then(()=>true).catch(()=>false),
+          window.storage.listWithValues('ob_saved_light:')
+        ]);
+        if(ready){
+          items = [];
+          const keys = (res && res.keys) || [];
+          const values = (res && res.values) || {};
+          for(const k of keys){
+            try{ if(values[k]){ const r = JSON.parse(values[k]); r._partial = true; items.push(r); } }catch(e){}
+          }
+          savedViaLight = true;
+        }
+      }
+    }catch(e){ items = null; }
+    if(!items){
+      const full = await fetchSavedFullItems();
+      items = full.items;
+      fetchOk = full.ok;
+      if(fetchOk) migrateLightCopies(items); // one-time, in the background
+    }
     if(!fetchOk && savedCache){ savedLastRefresh = Date.now(); return savedCache; }
     const visibleItems = items.filter(it => !deletedSavedIds.has(it.id));
     visibleItems.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
@@ -2386,6 +2440,34 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     savedLastRefresh = Date.now();
     writeSavedLightCache(visibleItems);
     return visibleItems;
+  }
+
+  // Safety net, once per session: picks up any OB that an older copy of the app saved
+  // without a light copy (and drops light copies whose OB no longer exists).
+  let lightReconciled = false;
+  async function reconcileLightCopies(){
+    if(lightReconciled || !savedViaLight) return;
+    if(obWritesInFlight > 0 || saveObInFlight){ setTimeout(reconcileLightCopies, 8000); return; }
+    lightReconciled = true;
+    const full = await fetchSavedFullItems();
+    if(!full.ok) return;
+    const fullIds = new Set(full.items.map(i => i.id));
+    const have = new Set((savedCache || []).map(i => i.id));
+    let changed = false;
+    for(const it of full.items){
+      if(!it.id || deletedSavedIds.has(it.id) || have.has(it.id)) continue;
+      window.storage.set('ob_saved_light:' + it.id, JSON.stringify(stripSketch(it))).catch(()=>{});
+      const c = stripSketch(it); c._partial = true;
+      (savedCache = savedCache || []).push(c);
+      changed = true;
+    }
+    if(savedCache){
+      const keep = savedCache.filter(it => !it._partial || fullIds.has(it.id));
+      savedCache.filter(it => it._partial && !fullIds.has(it.id)).forEach(it => window.storage.delete('ob_saved_light:' + it.id).catch(()=>{}));
+      if(keep.length !== savedCache.length){ savedCache = keep; changed = true; }
+      savedCache.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    }
+    if(changed){ writeSavedLightCache(savedCache); rerenderActiveSavedView(); }
   }
 
   function rerenderActiveSavedView(){
@@ -2418,9 +2500,55 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   (function hookSavedCache(){
     const st = window.storage;
     if(!st || st.__obCacheHooked) return;
-    const origSet = st.set.bind(st), origDel = st.delete.bind(st);
+    // SPEED / RELIABILITY: Firebase sends every write one-by-one over a single connection, so a big
+    // earlier upload (or a stalled connection) can make "Save OB" / "Delete" look stuck. For OB and
+    // layout records, if the normal write has not been confirmed within 4 s (or it fails), the same
+    // write is also sent over a separate HTTPS request. Whichever confirms first wins (writes are
+    // idempotent, so doing both is harmless).
+    const sdkSet = st.set.bind(st), sdkDel = st.delete.bind(st);
+    const raceKey = (key)=> fbDb && typeof key === 'string' && /^(ob_saved|layout_saved)/.test(key);
+    function restWrite(method, key, value){
+      const url = firebaseConfig.databaseURL + '/ob_storage/' + encodeURIComponent(fbSafeKey(key)) + '.json';
+      return fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: method === 'PUT' ? JSON.stringify(value) : undefined })
+        .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status + (r.status === 401 || r.status === 403 ? ' (Firebase rules do not allow writing)' : '')); });
+    }
+    function raceWrite(sdkP, restFn, okValue){
+      return new Promise((resolve, reject)=>{
+        let done = false, restStarted = false, sdkErr = null, restErr = null;
+        const ok = (v)=>{ if(!done){ done = true; resolve(v); } };
+        const bad = (e)=>{ if(!done){ done = true; reject(e); } };
+        const startRest = ()=>{
+          if(restStarted || done) return;
+          restStarted = true;
+          restFn().then(()=>ok(okValue), e=>{ restErr = e; if(sdkErr) bad(sdkErr); });
+        };
+        setTimeout(startRest, 4000);
+        sdkP.then(ok, e=>{ sdkErr = e; if(restStarted){ if(restErr) bad(e); } else startRest(); });
+      });
+    }
+    const origSet = (key, value, shared)=> raceKey(key)
+      ? raceWrite(sdkSet(key, value, shared), ()=>restWrite('PUT', key, value), {key, value, shared: !!shared})
+      : sdkSet(key, value, shared);
+    const origDel = (key, shared)=> raceKey(key)
+      ? raceWrite(sdkDel(key, shared), ()=>restWrite('DELETE', key), {key, deleted: true, shared: !!shared})
+      : sdkDel(key, shared);
     st.set = async function(key, value, shared){
-      const r = await origSet(key, value, shared);
+      const isOb = typeof key === 'string' && key.indexOf('ob_saved:') === 0;
+      obWritesInFlight++;
+      let r;
+      try{
+        if(isOb){
+          // small light copy (no sketch) goes first — it is what the lists read
+          let lightP = Promise.resolve();
+          try{
+            const rec0 = JSON.parse(value);
+            if(rec0 && rec0.id) lightP = origSet('ob_saved_light:' + rec0.id, JSON.stringify(stripSketch(rec0)), shared).catch(()=>{});
+          }catch(e){}
+          r = (await Promise.all([origSet(key, value, shared), lightP]))[0];
+        } else {
+          r = await origSet(key, value, shared);
+        }
+      } finally { obWritesInFlight--; }
       if(savedCache && typeof key === 'string' && key.indexOf('ob_saved:') === 0){
         try{
           const rec = JSON.parse(value);
@@ -2432,7 +2560,16 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       return r;
     };
     st.delete = async function(key, shared){
-      const r = await origDel(key, shared);
+      let r;
+      obWritesInFlight++;
+      try{
+        if(typeof key === 'string' && key.indexOf('ob_saved:') === 0){
+          const lightD = origDel('ob_saved_light:' + key.slice('ob_saved:'.length), shared).catch(()=>{});
+          r = (await Promise.all([origDel(key, shared), lightD]))[0];
+        } else {
+          r = await origDel(key, shared);
+        }
+      } finally { obWritesInFlight--; }
       if(savedCache && typeof key === 'string' && key.indexOf('ob_saved:') === 0){
         const id = key.slice('ob_saved:'.length);
         savedCache = savedCache.filter(it => it.id !== id);
@@ -2901,8 +3038,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     });
   });
 
+  let layoutFetchFailed = false;
   async function fetchLayoutList(){
     const items = [];
+    layoutFetchFailed = false;
     try{
       if(typeof window.storage.listWithValues === 'function'){
         const res = await window.storage.listWithValues('layout_saved:');
@@ -2917,7 +3056,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         const recs = await Promise.all(keys.map(k => window.storage.get(k).catch(()=>null)));
         recs.forEach(rec => { try{ if(rec && rec.value) items.push(JSON.parse(rec.value)); }catch(e){} });
       }
-    }catch(e){ /* no saved layouts yet */ }
+    }catch(e){ layoutFetchFailed = true; }
     items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
     return items;
   }
@@ -2930,6 +3069,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   async function refreshLayoutCache(){
     const fresh = await fetchLayoutList();
+    if(layoutFetchFailed && layoutCache) return layoutCache; // offline / error — keep what we already have
     layoutCache = fresh;
     cachePut('layout_list', JSON.stringify(fresh));
     return fresh;
@@ -3299,31 +3439,30 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
           : 'Delete this saved OB?';
         showConfirmModal(delMsg, async ()=>{
           const idsToDelete = [delId].concat(childIds);
-          let failed = false;
-          for(const id of idsToDelete){
-            try{
-              await window.storage.delete('ob_saved:' + id);
-              // confirm it is really gone from storage
-              let stillThere = false;
-              try{ const chk = await window.storage.get('ob_saved:' + id); stillThere = !!(chk && chk.value); }catch(err){ stillThere = false; }
-              if(stillThere) throw new Error('still present after delete');
-              deletedSavedIds.add(id);
-              if(savedCache) savedCache = savedCache.filter(it => it.id !== id);
-              const i = all.findIndex(it => it.id === id);
-              if(i >= 0) all.splice(i, 1);
-            }catch(err){
-              failed = true;
-              console.error('Delete failed for', id, err);
-            }
-          }
-          if(!failed && idsToDelete.includes(openedSavedId)) openedSavedId = null;
-          if(!failed && idsToDelete.includes(pendingRevisionOf)){ pendingRevisionOf = null; pendingRevisionLabel = null; }
-          if(failed){
-            toast('Could not delete — check your connection / Firebase rules (needs write permission) and try again');
-          } else {
-            toast('Deleted');
-          }
+          // SPEED: take it off the screen right away; the cloud delete finishes in the background
+          const removedAll = all.filter(it => idsToDelete.includes(it.id));
+          const removedCache = (savedCache || []).filter(it => idsToDelete.includes(it.id));
+          idsToDelete.forEach(id => deletedSavedIds.add(id));
+          if(savedCache) savedCache = savedCache.filter(it => !idsToDelete.includes(it.id));
+          idsToDelete.forEach(id => { const i = all.findIndex(it => it.id === id); if(i >= 0) all.splice(i, 1); });
           rerender();
+          toast('Deleting…');
+          const results = await Promise.allSettled(idsToDelete.map(id => window.storage.delete('ob_saved:' + id)));
+          const failedIds = idsToDelete.filter((id, i) => results[i].status === 'rejected');
+          if(!failedIds.length){
+            if(idsToDelete.includes(openedSavedId)) openedSavedId = null;
+            if(idsToDelete.includes(pendingRevisionOf)){ pendingRevisionOf = null; pendingRevisionLabel = null; }
+            toast('Deleted');
+          } else {
+            console.error('Delete failed for', failedIds);
+            failedIds.forEach(id => deletedSavedIds.delete(id)); // put back what could not be deleted
+            removedAll.filter(it => failedIds.includes(it.id)).forEach(it => { if(!all.includes(it)) all.push(it); });
+            if(savedCache) removedCache.filter(it => failedIds.includes(it.id)).forEach(it => { if(!savedCache.includes(it)) savedCache.push(it); });
+            all.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+            const why = results.find(r => r.status === 'rejected');
+            toast('Could not delete — ' + ((why && why.reason && (why.reason.code || why.reason.message)) || 'check your connection / Firebase rules (needs write permission)'));
+            rerender();
+          }
         }, {title:'Delete saved OB', yesLabel:'Delete', danger:true});
       });
     });
@@ -6577,6 +6716,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // prefetch the full list now (parallel with Master Data / Users loading); redraw only if something changed
     fetchSavedFresh().then(fresh=>{ if(savedSig(fresh) !== sigBeforeStartup) rerenderActiveSavedView(); }).catch(()=>{});
     await loadPersisted();
+    setTimeout(reconcileLightCopies, 45000);
     if(!tryResumeSession()) refreshLoginMode();
   })();
 
