@@ -2184,8 +2184,44 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   const deletedSavedIds = new Set(); // ids deleted in this session — a late/stale refresh must never re-add them
   const savedSig = (list) => (list || []).map(it => (it.id||'') + '@' + (it.savedAt||'')).join('|');
 
-  async function fetchSavedFresh(){
+  // Light local copy of the saved list (sketch images removed). Lets Dashboard / Buyer wise / Styles /
+  // History paint instantly on open, while the real, full list is downloaded quietly in the background.
+  const SAVED_LS_KEY = 'ob_saved_list_light_v1';
+  function readSavedLightCache(){
+    try{
+      const raw = localStorage.getItem(SAVED_LS_KEY);
+      if(!raw) return null;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : null;
+    }catch(e){ return null; }
+  }
+  function writeSavedLightCache(list){
+    try{
+      const light = (list || []).map(it => { const c = Object.assign({}, it); delete c.sketch; c._partial = true; return c; });
+      localStorage.setItem(SAVED_LS_KEY, JSON.stringify(light));
+    }catch(e){ /* storage full / blocked — fine, app just loads without the instant-open copy */ }
+  }
+  // A record that came from the light copy has no sketch yet — load the full record before it is edited / copied,
+  // otherwise saving it would drop its sketch image.
+  async function ensureFullRecord(rec){
+    if(!rec || !rec._partial) return rec;
+    try{
+      const got = await window.storage.get('ob_saved:' + rec.id);
+      if(got && got.value) return JSON.parse(got.value);
+    }catch(e){}
+    toast('Could not load this OB fully — check your connection and try again');
+    return null;
+  }
+
+  let savedFreshInflight = null;
+  function fetchSavedFresh(){
+    if(savedFreshInflight) return savedFreshInflight;
+    savedFreshInflight = fetchSavedFreshRaw().finally(()=>{ savedFreshInflight = null; });
+    return savedFreshInflight;
+  }
+  async function fetchSavedFreshRaw(){
     const items = [];
+    let fetchOk = true;
     try{
       if(typeof window.storage.listWithValues === 'function'){
         // fast path: one round trip total, regardless of how many are saved
@@ -2202,11 +2238,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         const recs = await Promise.all(keys.map(k => window.storage.get(k).catch(()=>null)));
         recs.forEach(rec => { try{ if(rec && rec.value) items.push(JSON.parse(rec.value)); }catch(e){} });
       }
-    }catch(e){ /* no saved records yet */ }
+    }catch(e){ fetchOk = false; /* no saved records yet, or the download failed */ }
+    if(!fetchOk && savedCache){ savedLastRefresh = Date.now(); return savedCache; }
     const visibleItems = items.filter(it => !deletedSavedIds.has(it.id));
     visibleItems.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
     savedCache = visibleItems;
     savedLastRefresh = Date.now();
+    writeSavedLightCache(visibleItems);
     return visibleItems;
   }
 
@@ -3050,30 +3088,30 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   function wireStyleRowActions(wrap, all, rerender){
     wrap.querySelectorAll('.sr-open-btn, .sr-open-name').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'edit');
       });
     });
     wrap.querySelectorAll('.sr-sample-btn').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'sample');
       });
     });
     wrap.querySelectorAll('.sr-saveas-btn').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'saveas');
       });
     });
     wrap.querySelectorAll('.sr-copy-layout-btn').forEach(el=>{
       el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(!rec) return;
         if(!rec.sections || !rec.sections.length){ toast('This OB has no operations to copy yet'); return; }
         await openLayoutFromOB(rec);
@@ -6239,10 +6277,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     goToTab('dashboard');
     // Load THIS user's own in-progress New Style draft (not anyone else's)
     // before drawing the builder screen.
+    renderDashboard(); // start right away (uses the prefetched list) — don't wait for the draft sheet
     await loadUserSheet();
     renderSketch();
     renderSections();
-    renderDashboard();
   }
 
   $('login-btn').addEventListener('click', ()=>{
@@ -6357,6 +6395,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   // ---------- init ----------
   (async function init(){
+    const lightSaved = readSavedLightCache();
+    if(lightSaved && !savedCache){ savedCache = lightSaved; savedLastRefresh = 0; }
+    const sigBeforeStartup = savedSig(savedCache);
+    // prefetch the full list now (parallel with Master Data / Users loading); redraw only if something changed
+    fetchSavedFresh().then(fresh=>{ if(savedSig(fresh) !== sigBeforeStartup) rerenderActiveSavedView(); }).catch(()=>{});
     await loadPersisted();
     if(!tryResumeSession()) refreshLoginMode();
   })();
