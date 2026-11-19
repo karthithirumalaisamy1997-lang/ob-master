@@ -2092,6 +2092,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     };
   }
 
+  let saveObInFlight = false;
   $('save-ob-btn').addEventListener('click', async ()=>{
     const buyer = $('f-buyer').value.trim();
     const style = $('f-style').value.trim();
@@ -2099,7 +2100,12 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const totals = currentTotals();
     // If this builder currently has a saved OB loaded, update that same record
     // instead of creating a new one each time Save OB is clicked.
+    if(saveObInFlight) return; // a save is already running — ignore the extra click so no duplicate OB is created
+    saveObInFlight = true;
+    const prevOpenedId = openedSavedId; // remembered so the toast / a failed save can tell new vs update
     const id = openedSavedId || ('sv' + Date.now());
+    deletedSavedIds.delete(id); // if this id was deleted earlier in this session and is being saved again, let it show up
+    openedSavedId = id; // lock the id right now, so a 2nd click updates THIS record instead of making a new one
     const payload = {
       id: id,
       buyer: buyer,
@@ -2122,7 +2128,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       payload.revisionLabel = pendingRevisionLabel || 'As Per Sample';
     }
     try{
-      const wasUpdate = !!openedSavedId;
+      const wasUpdate = !!prevOpenedId;
       const wasRevision = !!pendingRevisionOf;
       await window.storage.set('ob_saved:' + id, JSON.stringify(payload));
       openedSavedId = id;
@@ -2134,7 +2140,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       // the revision and turn it into its own separate root record.
       toast(wasUpdate ? 'OB saved — updated ' + style : (wasRevision ? 'OB saved — "As Per Sample" linked to ' + style : 'OB saved — under ' + buyer));
     }catch(e){
+      openedSavedId = prevOpenedId; // save failed — don't keep pointing at a record that was never written
       toast('Could not save — try again');
+    }finally{
+      saveObInFlight = false;
     }
   });
 
@@ -2172,10 +2181,47 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let savedCache = null;
   let savedRefreshing = false;
   let savedLastRefresh = 0;
+  const deletedSavedIds = new Set(); // ids deleted in this session — a late/stale refresh must never re-add them
   const savedSig = (list) => (list || []).map(it => (it.id||'') + '@' + (it.savedAt||'')).join('|');
 
-  async function fetchSavedFresh(){
+  // Light local copy of the saved list (sketch images removed). Lets Dashboard / Buyer wise / Styles /
+  // History paint instantly on open, while the real, full list is downloaded quietly in the background.
+  const SAVED_LS_KEY = 'ob_saved_list_light_v1';
+  function readSavedLightCache(){
+    try{
+      const raw = localStorage.getItem(SAVED_LS_KEY);
+      if(!raw) return null;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : null;
+    }catch(e){ return null; }
+  }
+  function writeSavedLightCache(list){
+    try{
+      const light = (list || []).map(it => { const c = Object.assign({}, it); delete c.sketch; c._partial = true; return c; });
+      localStorage.setItem(SAVED_LS_KEY, JSON.stringify(light));
+    }catch(e){ /* storage full / blocked — fine, app just loads without the instant-open copy */ }
+  }
+  // A record that came from the light copy has no sketch yet — load the full record before it is edited / copied,
+  // otherwise saving it would drop its sketch image.
+  async function ensureFullRecord(rec){
+    if(!rec || !rec._partial) return rec;
+    try{
+      const got = await window.storage.get('ob_saved:' + rec.id);
+      if(got && got.value) return JSON.parse(got.value);
+    }catch(e){}
+    toast('Could not load this OB fully — check your connection and try again');
+    return null;
+  }
+
+  let savedFreshInflight = null;
+  function fetchSavedFresh(){
+    if(savedFreshInflight) return savedFreshInflight;
+    savedFreshInflight = fetchSavedFreshRaw().finally(()=>{ savedFreshInflight = null; });
+    return savedFreshInflight;
+  }
+  async function fetchSavedFreshRaw(){
     const items = [];
+    let fetchOk = true;
     try{
       if(typeof window.storage.listWithValues === 'function'){
         // fast path: one round trip total, regardless of how many are saved
@@ -2192,11 +2238,14 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         const recs = await Promise.all(keys.map(k => window.storage.get(k).catch(()=>null)));
         recs.forEach(rec => { try{ if(rec && rec.value) items.push(JSON.parse(rec.value)); }catch(e){} });
       }
-    }catch(e){ /* no saved records yet */ }
-    items.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
-    savedCache = items;
+    }catch(e){ fetchOk = false; /* no saved records yet, or the download failed */ }
+    if(!fetchOk && savedCache){ savedLastRefresh = Date.now(); return savedCache; }
+    const visibleItems = items.filter(it => !deletedSavedIds.has(it.id));
+    visibleItems.sort((a,b)=> (b.savedAt||'').localeCompare(a.savedAt||''));
+    savedCache = visibleItems;
     savedLastRefresh = Date.now();
-    return items;
+    writeSavedLightCache(visibleItems);
+    return visibleItems;
   }
 
   function rerenderActiveSavedView(){
@@ -3039,30 +3088,30 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   function wireStyleRowActions(wrap, all, rerender){
     wrap.querySelectorAll('.sr-open-btn, .sr-open-name').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'edit');
       });
     });
     wrap.querySelectorAll('.sr-sample-btn').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'sample');
       });
     });
     wrap.querySelectorAll('.sr-saveas-btn').forEach(el=>{
-      el.addEventListener('click', (e)=>{
+      el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(rec) loadSavedRecord(rec, 'saveas');
       });
     });
     wrap.querySelectorAll('.sr-copy-layout-btn').forEach(el=>{
       el.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const rec = all.find(it => it.id === el.dataset.id);
+        const rec = await ensureFullRecord(all.find(it => it.id === el.dataset.id));
         if(!rec) return;
         if(!rec.sections || !rec.sections.length){ toast('This OB has no operations to copy yet'); return; }
         await openLayoutFromOB(rec);
@@ -3072,9 +3121,37 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       b.addEventListener('click', async (e)=>{
         e.stopPropagation();
         if(!(!currentUser || currentUser.admin || currentUser.permDelete)){ toast('You do not have permission to delete'); return; }
-        showConfirmModal('Delete this saved OB?', async ()=>{
-          try{ await window.storage.delete('ob_saved:' + b.dataset.id); }catch(e){}
-          toast('Deleted');
+        const delId = b.dataset.id;
+        const childIds = all.filter(it => it.revisionOf === delId).map(it => it.id);
+        const delMsg = childIds.length
+          ? 'Delete this saved OB and its ' + childIds.length + ' "As Per Sample" version(s)?'
+          : 'Delete this saved OB?';
+        showConfirmModal(delMsg, async ()=>{
+          const idsToDelete = [delId].concat(childIds);
+          let failed = false;
+          for(const id of idsToDelete){
+            try{
+              await window.storage.delete('ob_saved:' + id);
+              // confirm it is really gone from storage
+              let stillThere = false;
+              try{ const chk = await window.storage.get('ob_saved:' + id); stillThere = !!(chk && chk.value); }catch(err){ stillThere = false; }
+              if(stillThere) throw new Error('still present after delete');
+              deletedSavedIds.add(id);
+              if(savedCache) savedCache = savedCache.filter(it => it.id !== id);
+              const i = all.findIndex(it => it.id === id);
+              if(i >= 0) all.splice(i, 1);
+            }catch(err){
+              failed = true;
+              console.error('Delete failed for', id, err);
+            }
+          }
+          if(!failed && idsToDelete.includes(openedSavedId)) openedSavedId = null;
+          if(!failed && idsToDelete.includes(pendingRevisionOf)){ pendingRevisionOf = null; pendingRevisionLabel = null; }
+          if(failed){
+            toast('Could not delete — check your connection / Firebase rules (needs write permission) and try again');
+          } else {
+            toast('Deleted');
+          }
           rerender();
         }, {title:'Delete saved OB', yesLabel:'Delete', danger:true});
       });
@@ -6200,10 +6277,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     goToTab('dashboard');
     // Load THIS user's own in-progress New Style draft (not anyone else's)
     // before drawing the builder screen.
+    renderDashboard(); // start right away (uses the prefetched list) — don't wait for the draft sheet
     await loadUserSheet();
     renderSketch();
     renderSections();
-    renderDashboard();
   }
 
   $('login-btn').addEventListener('click', ()=>{
@@ -6318,6 +6395,11 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   // ---------- init ----------
   (async function init(){
+    const lightSaved = readSavedLightCache();
+    if(lightSaved && !savedCache){ savedCache = lightSaved; savedLastRefresh = 0; }
+    const sigBeforeStartup = savedSig(savedCache);
+    // prefetch the full list now (parallel with Master Data / Users loading); redraw only if something changed
+    fetchSavedFresh().then(fresh=>{ if(savedSig(fresh) !== sigBeforeStartup) rerenderActiveSavedView(); }).catch(()=>{});
     await loadPersisted();
     if(!tryResumeSession()) refreshLoginMode();
   })();
