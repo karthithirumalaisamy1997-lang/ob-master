@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<link rel="preconnect" href="https://ob-master-1e605-default-rtdb.firebaseio.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
@@ -1243,6 +1245,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // flags remember when a load could not be confirmed, so persistAll() can
   // refuse to overwrite that specific data until a successful reload happens.
   let masterBundleLoadFailed = false;
+  // SPEED: Master Data is shown instantly from a local cache (IndexedDB) while the
+  // real copy is re-read from the cloud in the background. Until the cloud copy is
+  // confirmed, saving Master Data waits (so a stale cache can never overwrite it).
+  let masterBundlePending = false;
+  let masterReadyResolve = null;
+  let masterReadyPromise = Promise.resolve();
+  let masterEditedWhilePending = false;
   let builderSheetLoadFailed = false;
   let usersLoadFailed = false; // true only when the Users read itself failed (network hiccup) —
   // NOT when there's simply no users saved yet. Without this distinction, a failed
@@ -1492,6 +1501,124 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   });
 
   // ---------- persistence (best-effort, personal scope) ----------
+  // ---------- local cache for Master Data (speed only; the cloud stays the source of truth) ----------
+  function cacheOpen(){
+    return new Promise((res, rej)=>{
+      try{
+        const r = indexedDB.open('ob_cache', 1);
+        r.onupgradeneeded = ()=> r.result.createObjectStore('kv');
+        r.onsuccess = ()=> res(r.result);
+        r.onerror = ()=> rej(r.error);
+      }catch(e){ rej(e); }
+    });
+  }
+  async function cacheGet(key){
+    try{
+      const db = await cacheOpen();
+      return await new Promise(res=>{
+        const q = db.transaction('kv').objectStore('kv').get(key);
+        q.onsuccess = ()=> res(q.result || null);
+        q.onerror = ()=> res(null);
+      });
+    }catch(e){ return null; }
+  }
+  async function cachePut(key, value){
+    try{
+      const db = await cacheOpen();
+      db.transaction('kv', 'readwrite').objectStore('kv').put(value, key);
+    }catch(e){}
+  }
+
+  function applyMasterBundle(bundle){
+    masterData = bundle.masterData || {};
+    masterImages = bundle.masterImages || {};
+    mdFolders = bundle.mdFolders || {};
+    mdStyleFolder = bundle.mdStyleFolder || {};
+  }
+
+  function tidyMaster(){
+    // Defensive cleanup: drop any corrupted operation entries (missing a
+    // real name) that might have slipped in from an older version — these
+    // were crashing the Master Data screen.
+    Object.keys(masterData).forEach(g=>{
+      if(Array.isArray(masterData[g])){
+        masterData[g] = masterData[g].filter(o => o && typeof o.op === 'string' && o.op.trim());
+      }
+    });
+    // Defensive cleanup: drop mappings pointing at folders/styles that no longer exist,
+    // and make sure our next auto-generated folder id never collides with a loaded one.
+    Object.keys(mdFolders).forEach(id=>{
+      const n = parseInt(id.replace(/[^0-9]/g,''), 10);
+      if(!isNaN(n) && n >= mdFolderIdSeq) mdFolderIdSeq = n + 1;
+    });
+    Object.keys(mdStyleFolder).forEach(s=>{
+      if(!masterData[s] || !mdFolders[mdStyleFolder[s]]) delete mdStyleFolder[s];
+    });
+    Object.keys(mdFolders).forEach(id=>{
+      const f = mdFolders[id];
+      if(f && f.parentId && !mdFolders[f.parentId]) f.parentId = null; // orphaned subfolder becomes a main folder
+    });
+  }
+
+  function processUsers(usRead){
+    if(usRead.found && usRead.value){
+      try{
+        const loadedUsers = JSON.parse(usRead.value);
+        if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
+      }catch(e){}
+    } else if(!usRead.ok){
+      // The read itself failed after retries (offline / connection hiccup) — this is
+      // NOT the same as "no users saved yet". Block persistAll() from writing Users
+      // back out in this state, otherwise the next autosave would overwrite the real,
+      // already-saved user list in the cloud with whatever is in memory right now
+      // (the plain default account) — which is exactly what was deleting every
+      // created user the moment anything else triggered a save.
+      usersLoadFailed = true;
+    }
+    if(usersLoadFailed){
+      toast('Could not load Users (connection issue) — reload the page before creating or deleting users, or you may lose data');
+    }
+    // Safety net only: if there is truly no user account at all (e.g. very
+    // first run, or persisted data was lost), create one default admin so
+    // nobody gets locked out. If any account already exists — including one
+    // named "karthi" that was renamed or had its password changed later —
+    // we leave it exactly as saved instead of overwriting it back to the
+    // original default every time the app loads.
+    if(!appUsers.length && !usersLoadFailed){
+      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
+    }
+  }
+
+  // Runs when the real cloud copy arrives after Master Data was already shown from cache.
+  function reconcileMasterBundle(read, cachedRaw){
+    const done = ()=>{ masterBundlePending = false; if(masterReadyResolve){ masterReadyResolve(); masterReadyResolve = null; } };
+    const fail = ()=>{
+      // Could not confirm the cloud copy -> keep showing the cache, but block saving
+      // Master Data (same protection as before) so nothing real gets overwritten.
+      masterBundleLoadFailed = true;
+      toast('Could not load Master Data (connection issue) — reload the page before uploading or editing, or you may lose data');
+      done();
+    };
+    if(!read || !read.ok || !read.found || !read.value){ fail(); return; }
+    if(read.value === cachedRaw){ done(); return; } // cache was already up to date
+    let b = null;
+    try{ b = JSON.parse(read.value); }catch(e){}
+    if(!b){ fail(); return; }
+    applyMasterBundle(b);
+    tidyMaster();
+    cachePut('ob_master_bundle', read.value);
+    done();
+    // Master Data changed in the cloud since this device last saw it -> refresh the screens
+    if(currentUser){
+      try{ renderSections(); }catch(e){}
+      try{ if($('panel-master').classList.contains('active')) renderMasterTab(); }catch(e){}
+    }
+    if(masterEditedWhilePending){
+      toast('Master Data was updated from another device — please re-check your latest change');
+    }
+    masterEditedWhilePending = false;
+  }
+
   async function loadPersisted(){
     // Master Data (styles, reference images, folders, style→folder mapping)
     // now lives together under one combined key instead of four separate
@@ -1506,19 +1633,34 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // (their unsaved buyer/style/operations, even the "Unsaved changes"
     // prompt firing for data that wasn't theirs). It's now loaded per-user,
     // right after login, by loadUserSheet() — see completeLogin().
-    const [bundleRead, usRead] = await Promise.all([
-      getWithRetry('ob_master_bundle'),
-      getWithRetry('ob_users')
-    ]);
+    // SPEED: fire all reads at the same moment (cache + cloud bundle + users).
+    const cachedP = cacheGet('ob_master_bundle');
+    const bundleP = getWithRetry('ob_master_bundle');
+    const usP = getWithRetry('ob_users');
+
+    // Fast path: a cached copy of Master Data exists on this device -> show it now,
+    // don't make login wait for the big cloud download; verify it in the background.
+    const cachedRaw = await cachedP;
+    let cachedBundle = null;
+    if(cachedRaw){ try{ cachedBundle = JSON.parse(cachedRaw); }catch(e){} }
+    if(cachedBundle && cachedBundle.masterData){
+      applyMasterBundle(cachedBundle);
+      tidyMaster();
+      masterBundlePending = true;
+      masterReadyPromise = new Promise(r => { masterReadyResolve = r; });
+      bundleP.then(read => reconcileMasterBundle(read, cachedRaw));
+      processUsers(await usP);
+      return;
+    }
+
+    const [bundleRead, usRead] = await Promise.all([bundleP, usP]);
 
     let bundle = null;
     if(bundleRead.found && bundleRead.value){ try{ bundle = JSON.parse(bundleRead.value); }catch(e){} }
 
     if(bundle){
-      masterData = bundle.masterData || {};
-      masterImages = bundle.masterImages || {};
-      mdFolders = bundle.mdFolders || {};
-      mdStyleFolder = bundle.mdStyleFolder || {};
+      applyMasterBundle(bundle);
+      cachePut('ob_master_bundle', bundleRead.value);
     } else if(!bundleRead.ok){
       // The read itself failed after retries (offline / connection hiccup) —
       // this is NOT the same as "nothing saved yet". Keep masterData blank
@@ -1549,53 +1691,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       toast('Could not load Master Data (connection issue) — reload the page before uploading or editing, or you may lose data');
     }
 
-    // Defensive cleanup: drop any corrupted operation entries (missing a
-    // real name) that might have slipped in from an older version — these
-    // were crashing the Master Data screen.
-    Object.keys(masterData).forEach(g=>{
-      if(Array.isArray(masterData[g])){
-        masterData[g] = masterData[g].filter(o => o && typeof o.op === 'string' && o.op.trim());
-      }
-    });
-    // Defensive cleanup: drop mappings pointing at folders/styles that no longer exist,
-    // and make sure our next auto-generated folder id never collides with a loaded one.
-    Object.keys(mdFolders).forEach(id=>{
-      const n = parseInt(id.replace(/[^0-9]/g,''), 10);
-      if(!isNaN(n) && n >= mdFolderIdSeq) mdFolderIdSeq = n + 1;
-    });
-    Object.keys(mdStyleFolder).forEach(s=>{
-      if(!masterData[s] || !mdFolders[mdStyleFolder[s]]) delete mdStyleFolder[s];
-    });
-    Object.keys(mdFolders).forEach(id=>{
-      const f = mdFolders[id];
-      if(f && f.parentId && !mdFolders[f.parentId]) f.parentId = null; // orphaned subfolder becomes a main folder
-    });
-    if(usRead.found && usRead.value){
-      try{
-        const loadedUsers = JSON.parse(usRead.value);
-        if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
-      }catch(e){}
-    } else if(!usRead.ok){
-      // The read itself failed after retries (offline / connection hiccup) — this is
-      // NOT the same as "no users saved yet". Block persistAll() from writing Users
-      // back out in this state, otherwise the next autosave would overwrite the real,
-      // already-saved user list in the cloud with whatever is in memory right now
-      // (the plain default account) — which is exactly what was deleting every
-      // created user the moment anything else triggered a save.
-      usersLoadFailed = true;
-    }
-    if(usersLoadFailed){
-      toast('Could not load Users (connection issue) — reload the page before creating or deleting users, or you may lose data');
-    }
-    // Safety net only: if there is truly no user account at all (e.g. very
-    // first run, or persisted data was lost), create one default admin so
-    // nobody gets locked out. If any account already exists — including one
-    // named "karthi" that was renamed or had its password changed later —
-    // we leave it exactly as saved instead of overwriting it back to the
-    // original default every time the app loads.
-    if(!appUsers.length && !usersLoadFailed){
-      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
-    }
+    tidyMaster();
+    processUsers(usRead);
   }
 
   // Each signed-in user gets their own in-progress "New Style" draft, keyed
@@ -1651,6 +1748,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
   let saveTimer = null;
   function schedulePersist(){
+    if(masterBundlePending) masterEditedWhilePending = true;
     clearTimeout(saveTimer);
     // Slightly longer debounce than before — every field edit used to fire a
     // 6-key write burst just 500ms after the last keystroke, so someone typing
@@ -1706,6 +1804,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   async function persistAll(){
+    if(masterBundlePending) await masterReadyPromise; // never save Master Data before the cloud copy is confirmed
     // Master Data (styles, reference images, folders, style→folder mapping)
     // is saved together as ONE combined key instead of four separate ones.
     // Every save cycle used to fire six separate storage writes at once;
@@ -1742,7 +1841,8 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     // look like it "disappeared the next day".
     const labeled = [];
     if(!masterBundleLoadFailed){
-      labeled.push(['Master data', setWithRetry('ob_master_bundle', JSON.stringify(masterBundle))]);
+      const masterJson = JSON.stringify(masterBundle);
+      labeled.push(['Master data', setWithRetry('ob_master_bundle', masterJson).then(r=>{ cachePut('ob_master_bundle', masterJson); return r; })]);
     }
     if(!usersLoadFailed){
       labeled.push(['Users', setWithRetry('ob_users', JSON.stringify(appUsers))]);
@@ -4899,7 +4999,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
           <div class="md-group-image no-print">
             <div class="mgi-box" data-group="${escAttr(s)}" title="${img ? 'Click to view image' : 'Click to add a reference image'}">
               ${img
-                ? `<img src="${img}" alt="${escAttr(s)} reference">`
+                ? `<img src="${img}" alt="${escAttr(s)} reference" loading="lazy" decoding="async">`
                 : `<div class="mgi-ph"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 16L16 10L5 20" stroke="currentColor" stroke-width="1.6"/></svg><span>Add image</span></div>`
               }
               ${img ? `<button class="mgi-change" data-group="${escAttr(s)}" title="Change image">&#9998;</button><button class="mgi-remove" data-group="${escAttr(s)}" title="Remove image">&times;</button>` : ''}
