@@ -1252,6 +1252,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   let masterReadyResolve = null;
   let masterReadyPromise = Promise.resolve();
   let masterEditedWhilePending = false;
+  let lastMasterJson = null; // exact Master Data text last known to be in the cloud — unchanged Master Data is never re-uploaded
   let builderSheetLoadFailed = false;
   let usersLoadFailed = false; // true only when the Users read itself failed (network hiccup) —
   // NOT when there's simply no users saved yet. Without this distinction, a failed
@@ -1600,7 +1601,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       done();
     };
     if(!read || !read.ok || !read.found || !read.value){ fail(); return; }
-    if(read.value === cachedRaw){ done(); return; } // cache was already up to date
+    if(read.value === cachedRaw){ lastMasterJson = read.value; done(); return; } // cache was already up to date
     let b = null;
     try{ b = JSON.parse(read.value); }catch(e){}
     if(!b){ fail(); return; }
@@ -1609,6 +1610,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     tidyMaster();
     const changed = lightMode ? (before !== JSON.stringify([masterData, mdFolders, mdStyleFolder])) : true;
     cachePut('ob_master_bundle', read.value);
+    lastMasterJson = read.value;
     done();
     // Master Data changed in the cloud since this device last saw it -> refresh the screens
     if(currentUser){
@@ -1679,6 +1681,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(bundle){
       applyMasterBundle(bundle);
       cachePut('ob_master_bundle', bundleRead.value);
+      lastMasterJson = bundleRead.value;
       setWithRetry('ob_master_light', JSON.stringify({masterData: bundle.masterData || {}, mdFolders: bundle.mdFolders || {}, mdStyleFolder: bundle.mdStyleFolder || {}})).catch(()=>{});
     } else if(!bundleRead.ok){
       // The read itself failed after retries (offline / connection hiccup) —
@@ -1861,8 +1864,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const labeled = [];
     if(!masterBundleLoadFailed){
       const masterJson = JSON.stringify(masterBundle);
-      setWithRetry('ob_master_light', JSON.stringify({masterData: masterData, mdFolders: mdFolders, mdStyleFolder: mdStyleFolder})).catch(()=>{});
-      labeled.push(['Master data', setWithRetry('ob_master_bundle', masterJson).then(r=>{ cachePut('ob_master_bundle', masterJson); return r; })]);
+      // SPEED: every autosave used to re-upload the whole Master Data (with all reference images,
+      // several MB) even when only the OB sheet changed — that big upload blocked "Save OB".
+      // Now it is only sent when Master Data itself changed.
+      if(masterJson !== lastMasterJson){
+        setWithRetry('ob_master_light', JSON.stringify({masterData: masterData, mdFolders: mdFolders, mdStyleFolder: mdStyleFolder})).catch(()=>{});
+        labeled.push(['Master data', setWithRetry('ob_master_bundle', masterJson).then(r=>{ lastMasterJson = masterJson; cachePut('ob_master_bundle', masterJson); return r; })]);
+      }
     }
     if(!usersLoadFailed){
       labeled.push(['Users', setWithRetry('ob_users', JSON.stringify(appUsers))]);
