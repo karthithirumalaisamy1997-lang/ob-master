@@ -1590,7 +1590,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   }
 
   // Runs when the real cloud copy arrives after Master Data was already shown from cache.
-  function reconcileMasterBundle(read, cachedRaw){
+  function reconcileMasterBundle(read, cachedRaw, lightMode){
     const done = ()=>{ masterBundlePending = false; if(masterReadyResolve){ masterReadyResolve(); masterReadyResolve = null; } };
     const fail = ()=>{
       // Could not confirm the cloud copy -> keep showing the cache, but block saving
@@ -1604,8 +1604,10 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     let b = null;
     try{ b = JSON.parse(read.value); }catch(e){}
     if(!b){ fail(); return; }
+    const before = lightMode ? JSON.stringify([masterData, mdFolders, mdStyleFolder]) : null;
     applyMasterBundle(b);
     tidyMaster();
+    const changed = lightMode ? (before !== JSON.stringify([masterData, mdFolders, mdStyleFolder])) : true;
     cachePut('ob_master_bundle', read.value);
     done();
     // Master Data changed in the cloud since this device last saw it -> refresh the screens
@@ -1613,7 +1615,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       try{ renderSections(); }catch(e){}
       try{ if($('panel-master').classList.contains('active')) renderMasterTab(); }catch(e){}
     }
-    if(masterEditedWhilePending){
+    if(masterEditedWhilePending && changed){
       toast('Master Data was updated from another device — please re-check your latest change');
     }
     masterEditedWhilePending = false;
@@ -1653,6 +1655,22 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       return;
     }
 
+    // No local cache yet (first visit on this device): read a small copy of Master Data
+    // WITHOUT the reference images first, so login/Master Data are ready quickly.
+    // The images (the heavy part) keep downloading in the background.
+    const lightRead = await getWithRetry('ob_master_light', 1);
+    let light = null;
+    if(lightRead.found && lightRead.value){ try{ light = JSON.parse(lightRead.value); }catch(e){} }
+    if(light && light.masterData){
+      applyMasterBundle(light);
+      tidyMaster();
+      masterBundlePending = true;
+      masterReadyPromise = new Promise(r => { masterReadyResolve = r; });
+      bundleP.then(read => reconcileMasterBundle(read, null, true));
+      processUsers(await usP);
+      return;
+    }
+
     const [bundleRead, usRead] = await Promise.all([bundleP, usP]);
 
     let bundle = null;
@@ -1661,6 +1679,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(bundle){
       applyMasterBundle(bundle);
       cachePut('ob_master_bundle', bundleRead.value);
+      setWithRetry('ob_master_light', JSON.stringify({masterData: bundle.masterData || {}, mdFolders: bundle.mdFolders || {}, mdStyleFolder: bundle.mdStyleFolder || {}})).catch(()=>{});
     } else if(!bundleRead.ok){
       // The read itself failed after retries (offline / connection hiccup) —
       // this is NOT the same as "nothing saved yet". Keep masterData blank
@@ -1842,6 +1861,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const labeled = [];
     if(!masterBundleLoadFailed){
       const masterJson = JSON.stringify(masterBundle);
+      setWithRetry('ob_master_light', JSON.stringify({masterData: masterData, mdFolders: mdFolders, mdStyleFolder: mdStyleFolder})).catch(()=>{});
       labeled.push(['Master data', setWithRetry('ob_master_bundle', masterJson).then(r=>{ cachePut('ob_master_bundle', masterJson); return r; })]);
     }
     if(!usersLoadFailed){
