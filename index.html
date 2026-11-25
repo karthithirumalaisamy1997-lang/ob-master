@@ -1565,34 +1565,101 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     });
   }
 
-  function processUsers(usRead){
-    if(usRead.found && usRead.value){
-      lastUsersJson = usRead.value;
-      try{
-        const loadedUsers = JSON.parse(usRead.value);
-        if(Array.isArray(loadedUsers) && loadedUsers.length){ appUsers = loadedUsers; }
-      }catch(e){}
-    } else if(!usRead.ok){
-      // The read itself failed after retries (offline / connection hiccup) — this is
-      // NOT the same as "no users saved yet". Block persistAll() from writing Users
-      // back out in this state, otherwise the next autosave would overwrite the real,
-      // already-saved user list in the cloud with whatever is in memory right now
-      // (the plain default account) — which is exactly what was deleting every
-      // created user the moment anything else triggered a save.
+  // ---------- Users: one cloud record PER USER ----------
+  // Before, every user lived inside ONE shared list ('ob_users'). Any device/tab that
+  // saved that list (even with an old copy in memory) silently overwrote it and users
+  // "disappeared". Now each user is its own record ('ob_user:<name>'), written ONLY when
+  // you create / edit / delete that user, and never touched by autosave. So a user stays
+  // until you delete it yourself.
+  const USER_KEY_PREFIX = 'ob_user:';
+  function userKey(name){ return USER_KEY_PREFIX + encodeURIComponent(String(name).trim().toLowerCase()).replace(/\./g, '%2E'); }
+
+  async function fetchUsersFromCloud(){
+    try{
+      let values = {};
+      if(window.storage.listWithValues){
+        const r = await window.storage.listWithValues(USER_KEY_PREFIX);
+        values = r.values || {};
+      } else {
+        const r = await window.storage.list(USER_KEY_PREFIX);
+        for(const k of (r.keys || [])){ try{ values[k] = (await window.storage.get(k)).value; }catch(e){} }
+      }
+      const users = [];
+      Object.keys(values).forEach(k=>{
+        try{
+          const raw = values[k];
+          const u = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if(u && u.username) users.push(u);
+        }catch(e){}
+      });
+      users.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0) || String(a.username).localeCompare(String(b.username)));
+      return { ok:true, users };
+    }catch(e){
+      return { ok:false, users:[] };
+    }
+  }
+
+  async function saveUserRecord(u){
+    if(usersLoadFailed) throw new Error('users not loaded');
+    await setWithRetry(userKey(u.username), JSON.stringify(u));
+  }
+  async function deleteUserRecord(name){
+    if(usersLoadFailed) throw new Error('users not loaded');
+    await window.storage.delete(userKey(name));
+  }
+  // Re-reads the user list from the cloud so users created/deleted on another device show up here.
+  async function refreshUsersFromCloud(){
+    const c = await fetchUsersFromCloud();
+    if(c.ok && c.users.length){ appUsers = c.users; return true; }
+    return c.ok;
+  }
+
+  async function processUsers(usRead){
+    usersLoadFailed = false;
+    const cloud = await fetchUsersFromCloud();
+    if(!cloud.ok){
       usersLoadFailed = true;
+      toast('Could not load Users (connection issue) — reload the page before creating or deleting users');
+      return;
     }
-    if(usersLoadFailed){
-      toast('Could not load Users (connection issue) — reload the page before creating or deleting users, or you may lose data');
+    const list = cloud.users.slice();
+    // One-time move of the old single-list users into per-user records (nothing is lost).
+    const flag = await getWithRetry('ob_users_migrated_v2');
+    if(!flag.ok){
+      usersLoadFailed = true;
+      toast('Could not load Users (connection issue) — reload the page before creating or deleting users');
+      return;
     }
-    // Safety net only: if there is truly no user account at all (e.g. very
-    // first run, or persisted data was lost), create one default admin so
-    // nobody gets locked out. If any account already exists — including one
-    // named "karthi" that was renamed or had its password changed later —
-    // we leave it exactly as saved instead of overwriting it back to the
-    // original default every time the app loads.
-    if(!appUsers.length && !usersLoadFailed){
-      appUsers.push({username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true});
+    if(!flag.found){
+      if(!usRead || !usRead.ok){
+        usersLoadFailed = true;
+        toast('Could not load Users (connection issue) — reload the page before creating or deleting users');
+        return;
+      }
+      let legacy = [];
+      if(usRead.found && usRead.value){ try{ legacy = JSON.parse(usRead.value); }catch(e){} }
+      if(!Array.isArray(legacy)) legacy = [];
+      const have = new Set(list.map(u => u.username.toLowerCase()));
+      try{
+        for(const u of legacy){
+          if(!u || !u.username || have.has(u.username.toLowerCase())) continue;
+          if(!u.createdAt) u.createdAt = Date.now();
+          await setWithRetry(userKey(u.username), JSON.stringify(u));
+          list.push(u); have.add(u.username.toLowerCase());
+        }
+        await setWithRetry('ob_users_migrated_v2', String(Date.now()));
+      }catch(e){
+        usersLoadFailed = true;
+        toast('Could not move Users to the new storage — reload the page and try again');
+        return;
+      }
     }
+    // Truly no users anywhere (first ever run): create the default admin once.
+    if(!list.length){
+      const admin = {username:'karthi', password:'karthi4478', admin:true, menus:['dashboard','costsheet','master','layout','saved','users'], permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true, createdAt:Date.now()};
+      try{ await setWithRetry(userKey(admin.username), JSON.stringify(admin)); list.push(admin); }catch(e){ usersLoadFailed = true; return; }
+    }
+    appUsers = list;
   }
 
   // Runs when the real cloud copy arrives after Master Data was already shown from cache.
@@ -1658,7 +1725,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       masterBundlePending = true;
       masterReadyPromise = new Promise(r => { masterReadyResolve = r; });
       bundleP.then(read => reconcileMasterBundle(read, cachedRaw));
-      processUsers(await usP);
+      await processUsers(await usP);
       return;
     }
 
@@ -1674,7 +1741,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
       masterBundlePending = true;
       masterReadyPromise = new Promise(r => { masterReadyResolve = r; });
       bundleP.then(read => reconcileMasterBundle(read, null, true));
-      processUsers(await usP);
+      await processUsers(await usP);
       return;
     }
 
@@ -1719,7 +1786,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     }
 
     tidyMaster();
-    processUsers(usRead);
+    await processUsers(usRead);
   }
 
   // Each signed-in user gets their own in-progress "New Style" draft, keyed
@@ -1880,12 +1947,6 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         labeled.push(['Master data', setWithRetry('ob_master_bundle', masterJson).then(r=>{ lastMasterJson = masterJson; cachePut('ob_master_bundle', masterJson); return r; })]);
       }
     }
-    if(!usersLoadFailed){
-      const usersJson = JSON.stringify(appUsers);
-      if(usersJson !== lastUsersJson){
-        labeled.push(['Users', setWithRetry('ob_users', usersJson).then(r=>{ lastUsersJson = usersJson; return r; })]);
-      }
-    }
     if(!builderSheetLoadFailed){
       const sheetKey = currentSheetKey();
       const sheetJson = JSON.stringify(sheetPayload);
@@ -1900,14 +1961,13 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(failed.length){
       toast('Save failed (' + failed.join(', ') + ') — check your connection and try again');
     }
-    if(masterBundleLoadFailed || builderSheetLoadFailed || usersLoadFailed){
+    if(masterBundleLoadFailed || builderSheetLoadFailed){
       const broken = [];
       if(masterBundleLoadFailed) broken.push('Master Data');
-      if(usersLoadFailed) broken.push('Users');
       if(builderSheetLoadFailed) broken.push('your sheet');
       toast('Some data is NOT being saved right now (' + broken.join(', ') + ' couldn\'t be loaded) — reload the page to fix this');
     }
-    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed && !usersLoadFailed;
+    return failed.length === 0 && !masterBundleLoadFailed && !builderSheetLoadFailed;
   }
 
   // ---------- Master Data screen: explicit "Save" button ----------
@@ -2007,7 +2067,7 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
         if(e.isTrusted){ currentLayout = null; renderLayoutEditor(); }
         renderLayoutSavedList();
       }
-      if(btn.dataset.tab === 'users') renderUsers();
+      if(btn.dataset.tab === 'users'){ renderUsers(); refreshUsersFromCloud().then(()=>{ if(btn.classList.contains('active') || true) renderUsers(); }); }
       if(btn.dataset.tab === 'saved') renderSavedList();
       if(btn.dataset.tab === 'styles') renderStylesList();
       if(btn.dataset.tab === 'history') renderHistoryList();
@@ -6324,14 +6384,20 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
 
     wrap.querySelectorAll('.user-row-del').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        const i = +btn.dataset.idx;
-        const u = appUsers[i];
-        showConfirmModal('Delete user "' + u.username + '"?', ()=>{
-          appUsers.splice(i, 1);
+        const u = appUsers[+btn.dataset.idx];
+        if(!u) return;
+        showConfirmModal('Delete user "' + u.username + '"?', async ()=>{
+          try{
+            await deleteUserRecord(u.username);
+          }catch(e){
+            toast('Could not delete user — check your connection / reload and try again');
+            return;
+          }
+          const i = appUsers.indexOf(u);
+          if(i >= 0) appUsers.splice(i, 1);
           if(editingUserIndex === i) resetUserForm();
-          else if(editingUserIndex !== null && editingUserIndex > i) editingUserIndex--;
+          else if(editingUserIndex !== null && i >= 0 && editingUserIndex > i) editingUserIndex--;
           renderUsers();
-          schedulePersist();
           toast('User removed');
         }, {title:'Delete user', yesLabel:'Delete', danger:true});
       });
@@ -6418,13 +6484,17 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(isAdmin){ $('user-perm-smv').checked = true; $('user-perm-delete').checked = true; $('user-perm-create').checked = true; $('user-perm-download').checked = true; $('user-perm-upload').checked = true; }
   });
 
-  $('user-create-btn').addEventListener('click', ()=>{
+  $('user-create-btn').addEventListener('click', async ()=>{
     const username = $('user-username').value.trim();
     const password = $('user-password').value;
     const isEdit = editingUserIndex !== null;
 
     if(!username || (!isEdit && !password)){ toast('Username and password are required'); return; }
-    const dup = appUsers.some((u,idx) => u.username && u.username.toLowerCase() === username.toLowerCase() && idx !== editingUserIndex);
+    if(usersLoadFailed){ toast('Users could not be loaded — reload the page first'); return; }
+    // make sure we are checking against the latest list from the cloud (other devices may have added users)
+    await refreshUsersFromCloud();
+    const editTarget = isEdit ? appUsers[editingUserIndex] : null;
+    const dup = appUsers.some(u => u.username && u.username.toLowerCase() === username.toLowerCase() && u !== editTarget);
     if(dup){ toast('That username already exists'); return; }
 
     const admin = $('user-admin').checked;
@@ -6435,30 +6505,34 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     const permDownload = admin || $('user-perm-download').checked;
     const permUpload = admin || $('user-perm-upload').checked;
 
-    if(isEdit){
-      const existing = appUsers[editingUserIndex];
-      existing.username = username;
-      if(password) existing.password = password;
-      existing.admin = admin;
-      existing.menus = menus;
-      existing.permSmv = permSmv;
-      existing.permDelete = permDelete;
-      existing.permCreate = permCreate;
-      existing.permDownload = permDownload;
-      existing.permUpload = permUpload;
+    const btn = $('user-create-btn');
+    btn.disabled = true;
+    try{
+      if(isEdit){
+        if(!editTarget){ toast('That user no longer exists — reload the list'); return; }
+        const oldName = editTarget.username;
+        const updated = Object.assign({}, editTarget, {
+          username, password: password || editTarget.password, admin, menus, permSmv, permDelete, permCreate, permDownload, permUpload
+        });
+        await saveUserRecord(updated);
+        if(userKey(oldName) !== userKey(username)) await deleteUserRecord(oldName);
+        Object.assign(editTarget, updated);
+        resetUserForm();
+        renderUsers();
+        toast('User "' + username + '" updated');
+        return;
+      }
+      const nu = {username, password, admin, menus, permSmv, permDelete, permCreate, permDownload, permUpload, createdAt: Date.now()};
+      await saveUserRecord(nu);   // saved to the cloud right now — not left to a delayed autosave
+      appUsers.push(nu);
       resetUserForm();
       renderUsers();
-      schedulePersist();
-      toast('User "' + username + '" updated');
-      return;
+      toast('User "' + username + '" created');
+    }catch(e){
+      toast('Could not save user — check your connection and try again');
+    }finally{
+      btn.disabled = false;
     }
-
-    appUsers.push({username, password, admin, menus, permSmv, permDelete, permCreate, permDownload, permUpload});
-    resetUserForm();
-
-    renderUsers();
-    schedulePersist();
-    toast('User "' + username + '" created');
   });
 
   // Manage Users screen already autosaves a moment after you create/edit/delete
@@ -6467,15 +6541,15 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
   // click it any time after creating a user, and it saves right now (no debounce
   // wait) and tells you plainly whether it actually went through.
   $('user-save-btn').addEventListener('click', async ()=>{
-    clearTimeout(saveTimer);
     const btn = $('user-save-btn');
     const original = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Saving...';
-    const ok = await persistAll();
+    btn.textContent = 'Checking...';
+    const ok = await refreshUsersFromCloud();
     btn.disabled = false;
     btn.textContent = original;
-    if(ok) toast('✓ Users saved');
+    renderUsers();
+    toast(ok ? ('✓ ' + appUsers.length + ' users saved in the cloud') : 'Could not reach the cloud — check your connection');
   });
 
   // ---------- Login gate ----------
@@ -6609,16 +6683,26 @@ const SEED_MASTER_DATA = {"BASIC T-SHIRT": [{"op": "SHOULDER JOIN & LOADING", "m
     if(!appUsers.length){
       // first run: whoever fills this in becomes the initial admin
       const newUser = {username, password, admin:true, menus:Object.keys(MENU_LABELS), permSmv:true, permDelete:true, permCreate:true, permDownload:true, permUpload:true};
+      newUser.createdAt = Date.now();
       appUsers.push(newUser);
-      schedulePersist();
+      saveUserRecord(newUser).catch(()=>toast('Could not save admin account — check your connection'));
       completeLogin(newUser);
       toast('Admin account created');
       return;
     }
-    const match = appUsers.find(u => u.username && u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    const findMatch = ()=> appUsers.find(u => u.username && u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    let match = findMatch();
     if(!match){
-      $('login-error').textContent = 'Incorrect username or password.';
-      $('login-error').style.display = 'block';
+      // maybe this user was created on another device after this page loaded — re-check the cloud once
+      refreshUsersFromCloud().then(()=>{
+        match = findMatch();
+        if(!match){
+          $('login-error').textContent = 'Incorrect username or password.';
+          $('login-error').style.display = 'block';
+          return;
+        }
+        completeLogin(match);
+      });
       return;
     }
     completeLogin(match);
